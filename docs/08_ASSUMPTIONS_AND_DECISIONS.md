@@ -1,0 +1,63 @@
+# 08 · Assumptions & Design Decisions
+
+The brief says: *"treat ambiguity as part of the exercise. Make an assumption, note it somewhere you can reference in the live pitch, and move on."* This is that place. Each entry: the assumption, why, and what changes if it's wrong.
+
+---
+
+## A. Business assumptions
+
+| # | Assumption | Why | If wrong |
+|---|---|---|---|
+| A1 | The buying company is **Indian** and onboards **Indian domestic vendors** | Lets the rules go deep (PAN, GSTIN, IFSC) instead of shallow-global; Zamp works with Indian businesses | Add country rule packs (VAT/IBAN/SWIFT); the stage structure stays identical |
+| A2 | Every vendor is **GST-registered** | True for most B2B vendors above the turnover threshold; keeps v1 focused | Add a "Not GST-registered" checkbox → require a GST non-registration declaration document instead |
+| A3 | Required documents = **GST certificate, PAN card, cancelled cheque** | The standard minimum KYC pack in Indian procurement | Required-doc list is one constant; MSME / incorporation certificates can be added as optional |
+| A4 | The vendor is paid **only** into an account in its own legal name (proprietorship exception) | Standard AP control; third-party payments are the top fraud vector | The policy is one threshold block in `ACCOUNT_NAME` |
+| A5 | An existing vendor re-registering is a **change request**, not a new onboarding | Prevents duplicate vendor records (a common duplicate-payment source) | Route to an "update vendor" flow |
+| A6 | Procurement prefers **false pendings over false approvals** | A pending costs an email; a bad approval costs money | Thresholds (88/70 names, 90 cert name, risk 30) are tunable constants |
+| A7 | The vendor fills the form themselves (self-service portal); procurement reviews only exceptions | That's where automation saves time | Same engine works for analyst-entered data |
+
+## B. Data assumptions
+
+| # | Assumption | Why | If wrong |
+|---|---|---|---|
+| B1 | Documents are **digital (text-layer) PDFs** | Most GST certificates are downloaded from the GST portal as digital PDFs | Add an OCR step (Tesseract/PaddleOCR) before the same parser |
+| B2 | GST certificates follow the **REG-06** layout | It's the government standard | Fingerprints and regexes are isolated in `documents.py` |
+| B3 | The **vendor master is the source of truth** for existing vendors and is a CSV export | Simplest integration; every ERP can export one | Swap for an ERP API read |
+| B4 | A **submission reference** identifies a vendor's application across resubmissions | Mirrors how a portal would track an application | Could key on PAN instead |
+| B5 | The IFSC → bank mapping by **4-letter prefix** is enough for v1 | The prefix identifies the bank deterministically | Load Razorpay's open IFSC dataset for branch-level validation |
+| B6 | All test data is **synthetic** but structurally valid (real checksums, real state codes, real bank prefixes) | No real PII; the logic stays meaningful | |
+
+## C. Product & technical decisions
+
+| # | Decision | Alternatives considered | Why this |
+|---|---|---|---|
+| C1 | **Rules decide, LLM assists** | LLM-as-judge for everything | Determinism, auditability, zero cost, no hallucinated approvals. The LLM is used where language matters (email tone) behind a guardrail |
+| C2 | **Severity-based outcome** (warn/blocker/review/reject) instead of a pure score threshold | Weighted score only | A score can't express "one fraud signal outweighs ten typos." Severity gives the status; the score gives a ranking |
+| C3 | **Three-way status with sub-queues** | Binary approve/reject | The brief asks for approved/pending/rejected; queues tell *who* acts next (vendor vs compliance) |
+| C4 | **Classify documents by content, not filename** | Trust upload slots or filenames | Wrong-document uploads are a stated pain point; filenames lie |
+| C5 | **Never reveal fraud reasoning to the vendor** | Full transparency | Telling a fraudster which signal tripped teaches them to evade it. Internal note vs vendor email are separate artefacts |
+| C6 | **Bank change on resubmission → Compliance review, not Reject** | Auto-reject | It might be legitimate (a company changing banks). The right control is out-of-band verification on the original number, which only a human can do |
+| C7 | **Append-only audit log** (new row per run and version) | Update in place | Auditors need to see what was submitted when, and what the system decided at that moment |
+| C8 | **Streamlit** | Next.js, n8n, Retool | One language, the live status view is native, one-command deploy, free hosting |
+| C9 | **Offline-first** | Call live government APIs | A live demo can't depend on third-party uptime; v1 must cost ₹0. Adapters can be added at the same check points |
+| C10 | **Hamming distance 1 between PAN and GSTIN-embedded PAN = typo; ≥2 = different entity** | Any mismatch = reject | Real submissions have typos; punishing them creates friction. Two or more character differences is no longer plausibly a typo |
+| C11 | **Name match thresholds: ≥88 match, 70–88 ask, <70 third party** | Exact match | Banks print names inconsistently (PVT. LTD., M/s, &). Normalisation plus fuzzy matching absorbs that noise |
+
+## D. Known limitations (say them before they're asked)
+
+1. No OCR: scanned image PDFs would be classified `unknown`.
+2. No live verification that the GSTIN is *active* on the GST portal, or that the account holder name matches at the bank (penny-drop). Both are paid or gated APIs; the check points exist for adapters.
+3. The cheque's printed holder name is extracted but not yet compared.
+4. The dashboard on Streamlit Cloud resets when the app sleeps (ephemeral disk). Locally it persists.
+5. Single user, no auth.
+6. Thresholds were tuned on 6 scenarios. In production they'd be tuned on historical decisions (precision/recall on known-good vs known-bad vendors).
+
+## E. What I'd build next (v2 roadmap, in priority order)
+
+1. **Penny-drop + GSTN-active adapters**: closes the two biggest verification gaps.
+2. **Vendor portal with magic-link resubmission**: prefilled, only failing fields editable.
+3. **OCR + LLM extraction fallback** for scanned and non-standard documents, with confidence scores and human confirmation below a threshold.
+4. **Sanctions/PEP screening** (OFAC SDN, OpenSanctions).
+5. **Feedback loop**: reviewer overrides are logged and used to tune thresholds.
+6. **ERP write-back** of approved vendors (SAP / NetSuite / Tally).
+7. **Ongoing monitoring**: re-check active vendors monthly (GSTIN cancelled? bank changed?).
