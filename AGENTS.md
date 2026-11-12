@@ -1,6 +1,6 @@
-# AGENTS.md: Rulebook for AI coding agents on VendorGuard (Codex). Identical to CLAUDE.md
+# AGENTS.md: Rulebook for AI coding agents on PayeeTrail (Codex). Identical to CLAUDE.md
 
-You are helping build **VendorGuard**, a vendor-onboarding verification app for a one-day take-home case study (Zamp, AI Solutions Analyst, PS-2). Read this file fully before any task.
+You are helping build **PayeeTrail**, a vendor-onboarding verification app for a one-day take-home case study (Zamp, AI Solutions Analyst, PS-2). Read this file fully before any task.
 
 ## 1. Read these first (source of truth)
 

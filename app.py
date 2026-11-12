@@ -1,4 +1,4 @@
-"""VendorGuard entry point: page config, CSS, sidebar (nav + settings), routing."""
+"""PayeeTrail entry point: page config, CSS, sidebar (nav + settings), routing."""
 from __future__ import annotations
 
 import streamlit as st
@@ -10,7 +10,7 @@ from ui import page_dashboard, page_outbox, page_run_detail, page_submit, state
 RENDER = dict(zip(state.PAGES, (page_submit.render, page_dashboard.render,
                                 page_run_detail.render, page_outbox.render)))
 
-st.set_page_config(page_title="VendorGuard", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="PayeeTrail", page_icon="🛡️", layout="wide")
 C.inject_css()
 state.init()
 
@@ -22,8 +22,8 @@ def ollama_detected() -> bool:
 
 
 with st.sidebar:
-    st.markdown("### 🛡️ VendorGuard")
-    st.caption("Vendor onboarding, verified")
+    st.markdown("### 🛡️ PayeeTrail")
+    st.caption("Trust the payee. Trace every change.")
     st.radio("Navigation", state.PAGES, key="page", label_visibility="collapsed")
     st.divider()
     with st.expander("Settings"):

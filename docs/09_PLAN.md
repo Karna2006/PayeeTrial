@@ -24,7 +24,7 @@ Small sequential phases. **Each phase ends with something that runs, and a git c
 
 ### Phase 0: Setup
 ```bash
-cd vendorguard
+cd payeetrail
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 git init && git add docs/ CLAUDE.md AGENTS.md README.md requirements.txt .gitignore

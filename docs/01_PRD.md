@@ -1,4 +1,4 @@
-# 01 · Product Requirements Document: VendorGuard
+# 01 · Product Requirements Document: PayeeTrail
 
 > Zamp · AI Solutions Analyst case study · **PS-2: Vendor onboarding, from submission to approval**
 > Owner: Arun Kaarthikeyan · Build window: 1 day · Status: Ready to build
@@ -7,7 +7,7 @@
 
 ## 1. One-liner
 
-**VendorGuard takes a vendor's onboarding submission (form + documents), cross-checks every field and document against each other and against the existing vendor list, and returns Approved / Pending / Rejected, with the reasoning visible and a ready-to-send message telling the vendor exactly what to fix.**
+**PayeeTrail takes a vendor's onboarding submission (form + documents), cross-checks every field and document against each other and against the existing vendor list, and returns Approved / Pending / Rejected, with the reasoning visible and a ready-to-send message telling the vendor exactly what to fix.**
 
 ---
 
@@ -27,7 +27,7 @@ Before a company can pay a vendor, procurement has to verify the vendor is real 
 
 ## 3. Target users
 
-| User | What they do | What they need from VendorGuard |
+| User | What they do | What they need from PayeeTrail |
 |---|---|---|
 | **Procurement / AP analyst** (primary) | Reviews new vendor submissions | A decision with reasons they can trust in 10 seconds; a queue of what needs them; zero time spent on clean cases |
 | **Compliance / finance controller** (secondary) | Owns fraud and audit risk | Fraud signals flagged clearly, nothing auto-approved that shouldn't be, a full audit trail of every run and resubmission |

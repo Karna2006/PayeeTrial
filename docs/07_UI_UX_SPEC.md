@@ -51,9 +51,9 @@ headless = true
 
 ## 2. Layout & navigation
 
-- `st.set_page_config(page_title="VendorGuard", page_icon="🛡️", layout="wide")`
+- `st.set_page_config(page_title="PayeeTrail", page_icon="🛡️", layout="wide")`
 - **Left sidebar** (fixed):
-  - Logo line: **🛡️ VendorGuard** + caption "Vendor onboarding, verified"
+  - Logo line: **🛡️ PayeeTrail** + caption "Trust the payee. Trace every change."
   - Nav (`st.radio`, label hidden): **Submit & Verify** · **Dashboard** · **Run detail** · **Outbox**
   - Divider
   - **Settings** expander: Demo pacing (toggle, ON) · Polish email with local LLM (toggle, OFF, disabled if Ollama not detected; status caption) · Reset demo data (confirm checkbox + button)

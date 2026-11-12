@@ -1,8 +1,8 @@
-# 🛡️ VendorGuard: vendor onboarding, verified
+# 🛡️ PayeeTrail: Trust the payee. Trace every change.
 
 > Zamp · AI Solutions Analyst case study · **PS-2: Vendor onboarding, from submission to approval**
 
-VendorGuard takes a vendor's onboarding submission (form + PDFs), cross-checks every field and document against each other and against the existing vendor master, and returns **Approved / Pending / Rejected**, with the reasoning visible stage by stage and a ready-to-send message telling the vendor exactly what to fix.
+PayeeTrail takes a vendor's onboarding submission (form + PDFs), cross-checks every field and document against each other and against the existing vendor master, and returns **Approved / Pending / Rejected**, with the reasoning visible stage by stage and a ready-to-send message telling the vendor exactly what to fix.
 
 - **26 checks across 5 stages:** intake → identity (PAN + GSTIN) → bank → document cross-check → duplicate & fraud screening
 - **Catches what field validators miss:** the PAN inside the GSTIN, GSTIN state vs address, documents classified by content, third-party bank accounts, bank accounts shared with existing vendors, unrequested bank changes on resubmission
