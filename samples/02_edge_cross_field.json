@@ -1,0 +1,35 @@
+{
+  "title": "Edge 1: every field valid alone; cross-checks reveal a PAN typo + GSTIN from the wrong state",
+  "expected": "PENDING",
+  "submission": {
+    "submission_ref": "VS-2026-102",
+    "legal_name": "Ridgeway Packaging Private Limited",
+    "trade_name": "Ridgeway Packaging",
+    "entity_type": "Private Limited Company",
+    "pan": "AAACR7731P",
+    "gstin": "29AAACR7781P1ZG",
+    "address": {
+      "line1": "Unit 4, Hinjewadi Phase 2",
+      "city": "Pune",
+      "state": "Maharashtra",
+      "pincode": "411057"
+    },
+    "contact": {
+      "name": "Rohan Kulkarni",
+      "email": "finance@ridgewaypack.com",
+      "phone": "9822012345"
+    },
+    "website": "https://ridgewaypack.com",
+    "bank": {
+      "account_holder": "Ridgeway Packaging Pvt Ltd",
+      "account_number": "441705001122",
+      "ifsc": "ICIC0004417",
+      "bank_name": "ICICI Bank"
+    },
+    "documents": [
+      "ridgeway_gst_certificate_KA.pdf",
+      "ridgeway_pan.pdf",
+      "ridgeway_cancelled_cheque_icici.pdf"
+    ]
+  }
+}

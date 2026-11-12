@@ -1,0 +1,35 @@
+{
+  "title": "Edge 4 (run AFTER #2): vendor fixes exactly what we asked, and quietly changes the bank account too. Every document checks out.",
+  "expected": "PENDING",
+  "submission": {
+    "submission_ref": "VS-2026-102",
+    "legal_name": "Ridgeway Packaging Private Limited",
+    "trade_name": "Ridgeway Packaging",
+    "entity_type": "Private Limited Company",
+    "pan": "AAACR7781P",
+    "gstin": "27AAACR7781P1ZK",
+    "address": {
+      "line1": "Unit 4, Hinjewadi Phase 2",
+      "city": "Pune",
+      "state": "Maharashtra",
+      "pincode": "411057"
+    },
+    "contact": {
+      "name": "Rohan Kulkarni",
+      "email": "finance@ridgewaypack.com",
+      "phone": "9822012345"
+    },
+    "website": "https://ridgewaypack.com",
+    "bank": {
+      "account_holder": "Ridgeway Packaging Pvt Ltd",
+      "account_number": "021963700004412",
+      "ifsc": "YESB0000219",
+      "bank_name": "Yes Bank"
+    },
+    "documents": [
+      "ridgeway_gst_certificate_MH.pdf",
+      "ridgeway_pan.pdf",
+      "ridgeway_cancelled_cheque_yes.pdf"
+    ]
+  }
+}

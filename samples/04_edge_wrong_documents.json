@@ -1,0 +1,35 @@
+{
+  "title": "Edge 3: form is perfect, but the uploads are wrong: a sister company's GST certificate and a 'cheque' file that is actually a PAN card",
+  "expected": "PENDING",
+  "submission": {
+    "submission_ref": "VS-2026-104",
+    "legal_name": "Vertex Engineering Solutions Private Limited",
+    "trade_name": "Vertex Engineering",
+    "entity_type": "Private Limited Company",
+    "pan": "AAACV3390M",
+    "gstin": "33AAACV3390M1Z4",
+    "address": {
+      "line1": "88, Guindy Industrial Estate",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "pincode": "600032"
+    },
+    "contact": {
+      "name": "Karthik Subramanian",
+      "email": "vendor@vertexengg.co.in",
+      "phone": "9840011223"
+    },
+    "website": "https://vertexengg.co.in",
+    "bank": {
+      "account_holder": "Vertex Engineering Solutions Pvt Ltd",
+      "account_number": "918020045566778",
+      "ifsc": "UTIB0000072",
+      "bank_name": "Axis Bank"
+    },
+    "documents": [
+      "vertex_gst_certificate.pdf",
+      "vertex_pan.pdf",
+      "vertex_cancelled_cheque.pdf"
+    ]
+  }
+}

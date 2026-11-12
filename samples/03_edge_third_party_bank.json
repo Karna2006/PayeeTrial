@@ -1,0 +1,35 @@
+{
+  "title": "Edge 2: paperwork is genuine, but payments would go to a third party's account that already belongs to another vendor",
+  "expected": "REJECTED",
+  "submission": {
+    "submission_ref": "VS-2026-103",
+    "legal_name": "Sunrise Office Supplies Private Limited",
+    "trade_name": "Sunrise Office Supplies",
+    "entity_type": "Private Limited Company",
+    "pan": "AAACS5527Q",
+    "gstin": "07AAACS5527Q1ZV",
+    "address": {
+      "line1": "B-14, Okhla Industrial Area Phase 1",
+      "city": "New Delhi",
+      "state": "Delhi",
+      "pincode": "110020"
+    },
+    "contact": {
+      "name": "Vikas Mehra",
+      "email": "sunrise.officesupplies@gmail.com",
+      "phone": "9811098765"
+    },
+    "website": "https://sunriseofficesupplies.in",
+    "bank": {
+      "account_holder": "Kaveri Traders",
+      "account_number": "34567890123",
+      "ifsc": "SBIN0001789",
+      "bank_name": "Axis Bank"
+    },
+    "documents": [
+      "sunrise_gst_certificate.pdf",
+      "sunrise_pan.pdf",
+      "sunrise_cancelled_cheque.pdf"
+    ]
+  }
+}

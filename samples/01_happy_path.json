@@ -1,0 +1,35 @@
+{
+  "title": "Happy path: clean, consistent submission",
+  "expected": "APPROVED",
+  "submission": {
+    "submission_ref": "VS-2026-101",
+    "legal_name": "Nimbus Logistics Private Limited",
+    "trade_name": "Nimbus Logistics",
+    "entity_type": "Private Limited Company",
+    "pan": "AAACN4821K",
+    "gstin": "29AAACN4821K1ZB",
+    "address": {
+      "line1": "42, 2nd Cross, Indiranagar",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "pincode": "560038"
+    },
+    "contact": {
+      "name": "Priya Raman",
+      "email": "accounts@nimbuslogistics.in",
+      "phone": "+91 98450 12345"
+    },
+    "website": "https://nimbuslogistics.in",
+    "bank": {
+      "account_holder": "NIMBUS LOGISTICS PVT. LTD.",
+      "account_number": "50200012345678",
+      "ifsc": "HDFC0001234",
+      "bank_name": "HDFC Bank"
+    },
+    "documents": [
+      "nimbus_gst_certificate.pdf",
+      "nimbus_pan.pdf",
+      "nimbus_cancelled_cheque.pdf"
+    ]
+  }
+}

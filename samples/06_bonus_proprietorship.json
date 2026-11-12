@@ -1,0 +1,36 @@
+{
+  "title": "Bonus: name mismatch that is NOT fraud. A proprietorship paid into the owner's personal account. Shows the rules aren't blunt.",
+  "expected": "APPROVED",
+  "submission": {
+    "submission_ref": "VS-2026-106",
+    "legal_name": "Meera Iyer",
+    "trade_name": "Meera Prints",
+    "entity_type": "Proprietorship",
+    "pan": "AHXPI6620L",
+    "gstin": "32AHXPI6620L1ZY",
+    "address": {
+      "line1": "21/455, MG Road, Ernakulam",
+      "city": "Kochi",
+      "state": "Kerala",
+      "pincode": "682016"
+    },
+    "contact": {
+      "name": "Meera Iyer",
+      "email": "meeraprints.kochi@gmail.com",
+      "phone": "9447012345"
+    },
+    "website": "",
+    "bank": {
+      "account_holder": "MEERA IYER",
+      "account_number": "10210100045678",
+      "ifsc": "FDRL0001021",
+      "bank_name": "Federal Bank"
+    },
+    "proprietor_name": "Meera Iyer",
+    "documents": [
+      "meera_gst_certificate.pdf",
+      "meera_pan.pdf",
+      "meera_cancelled_cheque.pdf"
+    ]
+  }
+}
