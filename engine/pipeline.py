@@ -112,7 +112,7 @@ def stage_intake(s: dict, ctx: dict) -> list[CheckResult]:
     else:
         out.append(CheckResult("EMAIL", "intake", "Contact email", PASS, f"Business domain {dom or '-'}"))
 
-    phone = "".join(ch for ch in get(s, "contact.phone") if ch.isdigit())[-10:]
+    phone = V.clean_phone(get(s, "contact.phone"))
     if phone and not (len(phone) == 10 and phone[0] in "6789"):
         out.append(CheckResult("PHONE", "intake", "Contact phone", FAIL, f"'{get(s, 'contact.phone')}' "
                                "is not a valid Indian mobile number", "blocker",
@@ -420,7 +420,7 @@ def stage_fraud(s: dict, ctx: dict) -> list[CheckResult]:
         elif bank_changed:
             out.append(CheckResult("RESUB_BANK_CHANGE", "fraud", "Bank details stable across resubmission", PASS,
                                    "Bank details changed in response to an earlier request"))
-        if get(before, "contact.phone") != get(after, "contact.phone") and get(before, "contact.email") != get(after, "contact.email"):
+        if "contact.phone" in changed and "contact.email" in changed:
             out.append(CheckResult("RESUB_CONTACT_CHANGE", "fraud", "Contact details stable", WARN,
                                    "Both phone and email changed on resubmission", "warn",
                                    internal_note="Both contact channels swapped. Verify through original channel.",
@@ -447,9 +447,42 @@ def _flatten(d: dict, prefix="") -> dict:
     return out
 
 
+def _comparable(key: str, value) -> str:
+    """Phone formatting is not a change; compare the normalised number."""
+    text = str(value if value is not None else "").strip()
+    return V.clean_phone(text) if key == "contact.phone" else text
+
+
 def diff_submissions(a: dict, b: dict) -> list[str]:
     fa, fb = _flatten(a), _flatten(b)
-    return sorted(k for k in set(fa) | set(fb) if str(fa.get(k, "")).strip() != str(fb.get(k, "")).strip())
+    return sorted(k for k in set(fa) | set(fb) if _comparable(k, fa.get(k, "")) != _comparable(k, fb.get(k, "")))
+
+
+# Rules Spec §5: a changed field is "requested" if the previous version failed a check that maps to it.
+REQUESTED_BY: dict[str, set[str]] = {
+    "pan": {"PAN_FORMAT", "PAN_TYPE", "GSTIN_PAN_LINK", "PAN_DOC_MATCH"},
+    "gstin": {"GSTIN_VALID", "GSTIN_PAN_LINK", "GSTIN_STATE", "GST_DOC_MATCH"},
+    "address": {"GSTIN_STATE", "PINCODE", "REQ_FIELDS"},
+    "bank": {"IFSC", "ACCOUNT_NO", "ACCOUNT_NAME", "CHEQUE_MATCH"},
+    "contact": {"EMAIL", "PHONE", "REQ_FIELDS"},
+    "legal_name": {"PAN_TYPE", "ACCOUNT_NAME", "GST_DOC_MATCH", "REQ_FIELDS"},
+    "entity_type": {"PAN_TYPE", "ACCOUNT_NAME", "GST_DOC_MATCH", "REQ_FIELDS"},
+    "proprietor_name": {"PAN_TYPE", "ACCOUNT_NAME", "GST_DOC_MATCH", "REQ_FIELDS"},
+}
+REQUESTED_DEFAULT = {"REQ_FIELDS"}
+
+
+def classify_changes(prev_sub: dict, sub: dict, prev_results: list[dict]) -> list[dict]:
+    """Field-level diff between two versions, each change marked requested / unrequested.
+
+    Feeds the UI diff table: an unrequested change is what a reviewer should look at first.
+    """
+    before, after = normalise_submission(prev_sub), normalise_submission(sub)
+    failed = {r["check_id"] for r in prev_results if r["status"] == FAIL}
+    fa, fb = _flatten(before), _flatten(after)
+    return [{"field": k, "before": str(fa.get(k, "")), "after": str(fb.get(k, "")),
+             "requested": bool(failed & REQUESTED_BY.get(k.split(".")[0], REQUESTED_DEFAULT))}
+            for k in diff_submissions(before, after)]
 
 
 # ==========================================================================
@@ -489,8 +522,10 @@ def run(sub: dict, docs: list[ParsedDoc], master: pd.DataFrame, previous: dict |
         delay: float = 0.0) -> Iterator[tuple[str, str, list[CheckResult], float]]:
     """Yields (stage_key, stage_label, results, elapsed_ms) as each stage finishes."""
     s = normalise_submission(sub)
-    ctx = {"docs": docs, "master": master, "previous": previous,
-           "doc_fields": {d.doc_type: d.fields for d in docs}}
+    doc_fields: dict = {}
+    for d in docs:  # first upload of each type wins, same as stage_documents
+        doc_fields.setdefault(d.doc_type, d.fields)
+    ctx = {"docs": docs, "master": master, "previous": previous, "doc_fields": doc_fields}
     for key, label in STAGES:
         t0 = time.perf_counter()
         results = STAGE_FUNCS[key](s, ctx)

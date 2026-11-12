@@ -74,6 +74,11 @@ def clean_id(value: str | None) -> str:
     return re.sub(r"[\s\-]", "", (value or "")).upper()
 
 
+def clean_phone(value: str | None) -> str:
+    """Last 10 digits, so '+91 98220 12345' and '9822012345' compare equal."""
+    return "".join(ch for ch in str(value or "") if ch.isdigit())[-10:]
+
+
 def gstin_checksum_char(first14: str) -> str:
     total = 0
     for i, ch in enumerate(first14):
