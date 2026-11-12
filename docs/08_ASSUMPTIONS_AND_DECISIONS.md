@@ -43,6 +43,18 @@ The brief says: *"treat ambiguity as part of the exercise. Make an assumption, n
 | C10 | **Hamming distance 1 between PAN and GSTIN-embedded PAN = typo; ≥2 = different entity** | Any mismatch = reject | Real submissions have typos; punishing them creates friction. Two or more character differences is no longer plausibly a typo |
 | C11 | **Name match thresholds: ≥88 match, 70–88 ask, <70 third party** | Exact match | Banks print names inconsistently (PVT. LTD., M/s, &). Normalisation plus fuzzy matching absorbs that noise |
 
+## C2. Build-time decisions (logged while implementing)
+
+| # | Decision | Why |
+|---|---|---|
+| I1 | `ACCOUNT_NAME` tests the proprietor match **before** the legal-name match | Scenario 6 has legal_name = proprietor's name, so the legal-name branch passed first and the "valid for a proprietorship" explanation never showed. Outcome is identical (pass either way); only the explanation changes |
+| I2 | Phone numbers are compared **after normalisation** in `RESUB_DIFF` / `RESUB_CONTACT_CHANGE` | `+91 98220 12345` → `9822012345` is reformatting, not a contact swap |
+| I3 | When a document type is uploaded twice, the **first** upload is used everywhere | `GSTIN_PAN_LINK` used the last PAN card while the document stage used the first |
+| I4 | Manually entered submissions get refs starting at `VS-2026-201` | Keeps them clear of the demo scenario refs (101–106), so a manual entry is never mistaken for a resubmission |
+| I5 | Entity type sits just above the form, not inside it | Widgets inside `st.form` don't rerun, and the proprietor field must appear as soon as Proprietorship is picked |
+| I6 | `.gitattributes` marks `*.pdf` as binary | The synthetic PDFs are ASCII, so git on Windows was treating them as text and rewriting line endings |
+| I7 | `REQUESTED_BY` / `classify_changes` live in `engine/pipeline.py` as `09_PLAN.md` says | This keeps the file over the ~300-line guideline; splitting it would mean rewriting the reference engine, which CLAUDE.md forbids |
+
 ## D. Known limitations (say them before they're asked)
 
 1. No OCR: scanned image PDFs would be classified `unknown`.

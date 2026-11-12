@@ -12,7 +12,7 @@ Every check, its exact logic, its severity, and the exact wording of what we tel
 | Field | Normalisation |
 |---|---|
 | `pan`, `gstin`, `bank.ifsc`, `bank.account_number` | remove spaces and hyphens, uppercase |
-| `contact.phone` | keep digits only, take the last 10 |
+| `contact.phone` | keep digits only, take the last 10 (applied when validating and when comparing versions; the stored value keeps the vendor's formatting) |
 | Names (for comparison only, never stored) | see §8 name normalisation |
 
 ---
@@ -50,7 +50,7 @@ Every check, its exact logic, its severity, and the exact wording of what we tel
 | `IFSC` | IFSC format | `^[A-Z]{4}0[A-Z0-9]{6}$`. On pass, the detail names the bank from IFSC_BANKS | ❌ / ✅ | blocker | "Your IFSC code looks incorrect. Please check it on your cheque." | |
 | `IFSC_BANK` | IFSC matches stated bank | name_similarity(IFSC_BANKS[ifsc[:4]], bank.bank_name) < 70 → ⚠️ (only emitted on mismatch; skipped if prefix unknown) | ⚠️ | warn + `risk-signal` | (none) | "Bank name and IFSC disagree. Data-entry slip or details pasted from someone else's account." |
 | `ACCOUNT_NO` | Account number format | digits only, length 9–18 (only emitted on failure) | ❌ | blocker | "Your bank account number looks incorrect. Please re-check it." | |
-| `ACCOUNT_NAME` ⭐ | Account holder = legal entity | `sim = name_similarity(account_holder, legal_name)` · **sim ≥ 88** ✅ · **else if** entity = Proprietorship and name_similarity(account_holder, proprietor_name) ≥ 88 → ✅ (detail explains why it's valid) · **else if sim ≥ 70** ❌ blocker · **else** ❌ reject | ✅ / ❌ | 70–88 blocker · < 70 **reject** + `fraud-signal` | 70–88: "The bank account name ('{holder}') doesn't exactly match your registered name ('{legal}'). Please confirm the account belongs to your business, or share a cancelled cheque showing the registered name." · <70: "We can only make payments to a bank account held in your registered business name. Third-party accounts can't be accepted." | <70: "Third-party bank account. The #1 vendor payment-fraud pattern." |
+| `ACCOUNT_NAME` ⭐ | Account holder = legal entity | `sim = name_similarity(account_holder, legal_name)` · **if** entity = Proprietorship and name_similarity(account_holder, proprietor_name) ≥ 88 → ✅ (detail explains why it's valid; tested first so the explanation shows even when legal_name is also the proprietor's name) · **else if sim ≥ 88** ✅ · **else if sim ≥ 70** ❌ blocker · **else** ❌ reject | ✅ / ❌ | 70–88 blocker · < 70 **reject** + `fraud-signal` | 70–88: "The bank account name ('{holder}') doesn't exactly match your registered name ('{legal}'). Please confirm the account belongs to your business, or share a cancelled cheque showing the registered name." · <70: "We can only make payments to a bank account held in your registered business name. Third-party accounts can't be accepted." | <70: "Third-party bank account. The #1 vendor payment-fraud pattern." |
 
 Thresholds 88 / 70 were tuned on the sample set; examples: "NIMBUS LOGISTICS PVT. LTD." vs "Nimbus Logistics Private Limited" = 100 after normalisation; "Kaveri Traders" vs "Sunrise Office Supplies Private Limited" = 26.7.
 

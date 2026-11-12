@@ -250,15 +250,16 @@ def stage_bank(s: dict, ctx: dict) -> list[CheckResult]:
     sim = V.name_similarity(holder, legal)
     if not holder:
         return out
-    if sim >= 88:
-        out.append(CheckResult("ACCOUNT_NAME", "bank", "Account holder = legal entity", PASS,
-                               f"'{holder}' ≈ '{legal}' (similarity {sim})", evidence={"similarity": sim}))
-    elif s.get("entity_type") == "Proprietorship" and s.get("proprietor_name") and \
+    # Proprietor match is tested first so the run view explains *why* a personal account is acceptable.
+    if s.get("entity_type") == "Proprietorship" and s.get("proprietor_name") and \
             V.name_similarity(holder, s["proprietor_name"]) >= 88:
         out.append(CheckResult("ACCOUNT_NAME", "bank", "Account holder = legal entity", PASS,
                                f"Account is in proprietor's name '{holder}'. Valid for a proprietorship, "
                                "since the proprietor and the business are the same legal person.",
                                evidence={"similarity_to_proprietor": V.name_similarity(holder, s['proprietor_name'])}))
+    elif sim >= 88:
+        out.append(CheckResult("ACCOUNT_NAME", "bank", "Account holder = legal entity", PASS,
+                               f"'{holder}' ≈ '{legal}' (similarity {sim})", evidence={"similarity": sim}))
     elif sim >= 70:
         out.append(CheckResult("ACCOUNT_NAME", "bank", "Account holder = legal entity", FAIL,
                                f"'{holder}' is close to but not the same as '{legal}' (similarity {sim})", "blocker",
