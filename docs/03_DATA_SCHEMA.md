@@ -91,6 +91,8 @@ Stored as JSON. Sample files wrap it as `{"title", "expected", "submission"}`.
 
 **Extracted `fields` per type:**
 
+The document cross-check requires every listed core field before it can pass: GST `gstin`, `legal_name`, `status`; PAN `pan`, `name`; cheque `ifsc`, `account_number`, `account_holder`. A missing value routes the record to analyst review. Different-content documents classified as the same required type also require review; byte-identical uploads are treated as one document for matching.
+
 | doc_type | fields | Extraction pattern (regex on text) |
 |---|---|---|
 | `gst_certificate` | `gstin`, `legal_name`, `trade_name`, `address`, `status` | `Registration Number: (…15 chars)`, `Legal Name: (…)`, `Trade Name…: (…)`, `Address of Principal Place of Business: (…)`, `Status: (word)` |

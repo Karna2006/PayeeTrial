@@ -117,6 +117,22 @@ def test_c9b_rejection_with_no_safe_ask_stays_generic(run_sample):
     assert "V-1042" not in email["body"] and "Kaveri" not in email["body"]
 
 
+def test_compliance_email_uses_first_submission_or_resubmission_wording():
+    sub = {"legal_name": "Nimbus Logistics", "submission_ref": "VS-2026-101",
+           "contact": {"name": "Priya", "email": "accounts@example.com"}}
+    decision = {"status": "PENDING", "queue": "Compliance review"}
+
+    first = messages.vendor_email(sub, decision, [])
+    resubmission = messages.vendor_email(sub, decision,
+                                         [{"check_id": "RESUB_DIFF", "status": "info", "vendor_ask": ""}])
+
+    assert "Thanks for submitting the vendor registration for Nimbus Logistics." in first["body"]
+    assert "number you provided" in first["body"]
+    assert "updated submission" not in first["body"]
+    assert "updated submission" in resubmission["body"]
+    assert "number originally registered" in resubmission["body"]
+
+
 @pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6])
 def test_c12_deterministic(run_sample, n):
     runs = [run_sample(n) for _ in range(3)]

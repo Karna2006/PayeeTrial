@@ -42,8 +42,8 @@ def test_a3_third_party_bank(run_sample):
 
 def test_a4_wrong_documents(run_sample):
     out = run_sample(4)
-    assert status_queue_risk(out) == ("PENDING", "Awaiting vendor", 24)
-    assert failed_ids(out) == ["DOC_CANCELLED_CHEQUE", "GST_DOC_MATCH"]
+    assert status_queue_risk(out) == ("PENDING", "Awaiting vendor", 36)
+    assert failed_ids(out) == ["DOC_TYPE_CONFLICT", "DOC_CANCELLED_CHEQUE", "GST_DOC_MATCH"]
     assert "PAN card twice" in by_id(out, "DOC_CANCELLED_CHEQUE")["vendor_ask"]
     assert "33AAACV3391N1Z1" in by_id(out, "GST_DOC_MATCH")["vendor_ask"]
 

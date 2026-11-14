@@ -11,7 +11,7 @@ Six scenarios: 1 happy path, 4 edge cases (the brief asks for 2–4 non-trivial 
 | 1 | `01_happy_path.json` | Clean, consistent | **APPROVED** | Ready for vendor master | 0 · Low | all pass (name normalisation makes "PVT. LTD." = "Private Limited") |
 | 2 | `02_edge_cross_field.json` | Every field valid alone; cross-checks fail | **PENDING** | Awaiting vendor | 36 · Medium | GSTIN_PAN_LINK (d=1), GSTIN_STATE, PAN_DOC_MATCH |
 | 3 | `03_edge_third_party_bank.json` | Genuine company, bank account belongs to another vendor | **REJECTED** | Closed: rejected | 100 · High | ACCOUNT_NAME (reject), DUP_BANK (reject), EMAIL ⚠️, IFSC_BANK ⚠️ |
-| 4 | `04_edge_wrong_documents.json` | Perfect form, wrong uploads | **PENDING** | Awaiting vendor | 24 · Medium | DOC_CANCELLED_CHEQUE, GST_DOC_MATCH |
+| 4 | 04_edge_wrong_documents.json | Perfect form, wrong uploads, two different PAN documents | PENDING | Awaiting vendor | 36 - Medium | DOC_TYPE_CONFLICT, DOC_CANCELLED_CHEQUE, GST_DOC_MATCH |
 | 5 | `05_edge_resubmission_bank_swap.json` | v2 of #2: fixes asks + silently swaps bank | **PENDING** | Compliance review | 35 · Medium | RESUB_DIFF ℹ️, RESUB_BANK_CHANGE (review) |
 | 6 | `06_bonus_proprietorship.json` | Name "mismatch" that's legitimate | **APPROVED** | Ready for vendor master | 0 · Low | ACCOUNT_NAME passes via the proprietor rule |
 
@@ -30,7 +30,7 @@ Six scenarios: 1 happy path, 4 edge cases (the brief asks for 2–4 non-trivial 
 | Docs | nimbus_gst_certificate.pdf · nimbus_pan.pdf · nimbus_cancelled_cheque.pdf (all consistent) |
 
 **Expected:** APPROVED, risk 0, approval email.
-**Demo line:** "Every field validated, every document read and cross-checked against the form, bank name matched despite 'PVT. LTD.' vs 'Private Limited'. A human didn't need to touch this."
+**Demo line:** "It classified documents by content, not filename. It caught the sister-company GST certificate, the missing cheque, and the extra PAN card uploaded in the cheque slot."
 
 ---
 
@@ -52,7 +52,7 @@ Six scenarios: 1 happy path, 4 edge cases (the brief asks for 2–4 non-trivial 
 2. GSTIN is Karnataka (29) but the address is Maharashtra → share the Maharashtra GSTIN (should start with **27**) or update the address
 3. PAN card shows AAACR7781P but the form says AAACR7731P
 
-**Demo line:** "Notice it didn't just say 'PAN invalid'. It worked out *which* value is the typo by triangulating three sources, and told the vendor the exact state code to look for."
+**Demo line:** "It classified documents by content, not filename. It caught the sister-company GST certificate, the missing cheque, and the extra PAN card uploaded in the cheque slot."
 
 ---
 
@@ -74,7 +74,7 @@ Six scenarios: 1 happy path, 4 edge cases (the brief asks for 2–4 non-trivial 
 Vendor email: rejection citing *only* "we can only pay into an account in your registered business name" (**does NOT mention V-1042**).
 Internal note: "Bank account shared with existing vendor V-1042 (Kaveri Traders). Do NOT disclose… Investigate for collusion / shell vendor."
 
-**Demo line:** "Two independent signals agree: the name says third party, and the vendor master says that exact account already gets paid as a different vendor. Notice what the vendor sees versus what compliance sees."
+**Demo line:** "It classified documents by content, not filename. It caught the sister-company GST certificate, the missing cheque, and the extra PAN card uploaded in the cheque slot."
 
 ---
 
@@ -91,11 +91,12 @@ Internal note: "Bank account shared with existing vendor V-1042 (Kaveri Traders)
 | `vertex_pan.pdf` | PAN card, correct | |
 | `vertex_cancelled_cheque.pdf` | **actually a PAN card** | filename says cheque; content says otherwise |
 
-**Expected:** PENDING · Awaiting vendor · risk 24. Asks:
-1. "Please upload your cancelled cheque. We received PAN card twice; one of the uploads may have been the wrong file."
-2. "The GST certificate you uploaded doesn't match your submission (certificate GSTIN 33AAACV3391N1Z1 ≠ form GSTIN 33AAACV3390M1Z4; certificate is for 'VERTEX ENGINEERING SERVICES PRIVATE LIMITED'…)."
+**Expected:** PENDING - Awaiting vendor - risk 36. The two distinct PAN files create a correction blocker; the missing cheque and mismatched GST certificate also need replacement.
+1. "More than one different PAN card was uploaded. Please keep the correct one and remove the others."
+2. "Please upload your cancelled cheque."
+3. "The GST certificate you uploaded does not match your submission; please upload the correct certificate."
 
-**Demo line:** "It classified documents by reading them, not by filename, so it caught the 'cheque' that's actually a PAN card, and spotted that 'Services' isn't 'Solutions'."
+**Demo line:** "It classified documents by content, not filename. It caught the sister-company GST certificate, the missing cheque, and the extra PAN card uploaded in the cheque slot."
 
 ---
 
@@ -118,7 +119,7 @@ Docs: ridgeway_gst_certificate_MH.pdf (27…), ridgeway_pan.pdf, ridgeway_cancel
 Vendor email: neutral "under review… we may call you on the number originally registered" (no tip-off).
 Internal note: "…classic account-takeover / BEC pattern. Hold. Verify by calling back on the ORIGINAL number on file (9822012345)…"
 
-**Demo line:** "This is the attack that costs companies real money: a vendor's email gets compromised mid-onboarding and the 'fix' quietly redirects payments. Every document checks out. The only tell is that we never asked for a bank change. And notice the callback goes to the *original* number, because the new contact details could be the attacker's."
+**Demo line:** "It classified documents by content, not filename. It caught the sister-company GST certificate, the missing cheque, and the extra PAN card uploaded in the cheque slot."
 
 ---
 

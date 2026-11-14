@@ -65,6 +65,11 @@ _GST_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+EMAIL_RE = re.compile(
+    r"^[A-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@"
+    r"(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
+    re.I,
+)
 
 
 # --------------------------------------------------------------------------
@@ -114,6 +119,11 @@ def gstin_embedded_pan(gstin: str) -> str:
 
 def ifsc_valid(ifsc: str) -> bool:
     return bool(IFSC_RE.match(ifsc))
+
+
+def email_valid(email: str | None) -> bool:
+    value = (email or "").strip()
+    return len(value) <= 254 and bool(EMAIL_RE.fullmatch(value))
 
 
 def ifsc_bank(ifsc: str) -> str | None:

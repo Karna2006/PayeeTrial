@@ -77,6 +77,33 @@ def test_evidence_must_match_the_cited_page_and_candidate_value(monkeypatch):
     assert "pan" in review["review_reason"]
 
 
+def test_markdown_emphasis_does_not_break_an_exact_citation(monkeypatch):
+    result = model_result(evidence=[{"field": "pan", "page_number": 1, "quote": "**AAACN4821K**"}])
+    monkeypatch.setattr(ai, "_request", lambda *args, **kwargs: provider_response(result))
+
+    review = ai.review_pdf(PDF, "fake-test-key", page_count=1, text_layer="PAN: AAACN4821K")
+
+    assert review["evidence"][0]["text_verified"] is True
+    assert review["score_breakdown"]["field_completeness"] == 20
+
+
+def test_truncated_account_number_is_not_supported_by_a_longer_page_value(monkeypatch):
+    result = model_result(
+        document_type="cancelled_cheque",
+        fields={"ifsc": "HDFC0001234", "account_number": "5020001234567",
+                "account_holder": "NIMBUS LOGISTICS PVT LTD"},
+        evidence=[{"field": "account_number", "page_number": 1, "quote": "A/C No: 50200012345678"}],
+    )
+    monkeypatch.setattr(ai, "_request", lambda *args, **kwargs: provider_response(result))
+
+    review = ai.review_pdf(PDF, "fake-test-key", page_count=1,
+                           text_layer="A/C No: 50200012345678")
+
+    assert review["score_breakdown"]["field_completeness"] == 0
+    assert review["needs_review"] is True
+    assert "account_number" in review["review_reason"]
+
+
 def test_pdf_parser_preserves_page_boundaries_for_evidence_checks(monkeypatch):
     data = make_two_page_text_pdf()
     doc = documents.parse("multipage.pdf", data)

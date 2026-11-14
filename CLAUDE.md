@@ -94,7 +94,7 @@ ui/page_outbox.py      generated vendor emails
 engine/validators.py   PAN/GSTIN/IFSC/name helpers + reference data
 engine/documents.py    PDF → ParsedDoc (local text classification and extraction)
 services/document_ai.py optional OpenRouter PDF classification, evidence extraction and advisory score
-engine/pipeline.py     5 stages, 26 checks, decide()
+engine/pipeline.py     5 stages, 27 core checks, decide()
 engine/messages.py     vendor email, internal note, optional OpenRouter polish
 engine/store.py        SQLite append-only audit log
 scripts/make_samples.py  demo data generator

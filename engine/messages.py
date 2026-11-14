@@ -34,9 +34,15 @@ def vendor_email(sub: dict, decision: dict, results: list[dict]) -> dict:
                 f"review it with you.\n\nThanks,\nProcurement Team")
     elif decision["queue"] in ("Compliance review", "Procurement review"):
         subject = f"Your vendor registration is under review [{ref}]"
-        body = (f"Hi {name},\n\nThanks for the updated submission for {company}. It's now with our team "
-                "for a final verification step. As part of this, we may call you on the phone number "
-                f"originally registered with us. No action is needed from you right now.\n\nThanks,\nProcurement Team")
+        is_resubmission = any(r.get("check_id") == "RESUB_DIFF" for r in results)
+        if is_resubmission:
+            intro = f"Thanks for the updated submission for {company}."
+            contact_line = "As part of this, we may call you on the phone number originally registered with us."
+        else:
+            intro = f"Thanks for submitting the vendor registration for {company}."
+            contact_line = "As part of this, we may call you on the phone number you provided."
+        body = (f"Hi {name},\n\n{intro} It's now with our team for a final verification step. "
+                f"{contact_line} No action is needed from you right now.\n\nThanks,\nProcurement Team")
     else:
         subject = f"Action needed: {len(asks)} item(s) to complete your vendor registration [{ref}]"
         lines = "\n".join(f"  {i}. {a}" for i, a in enumerate(asks, 1))

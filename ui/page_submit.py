@@ -265,15 +265,22 @@ def _read_documents(uploads: list, use_ai: bool = False) -> list[documents.Parse
         api_key = provider_settings.openrouter_key()
         model = provider_settings.model_name()
         review_cache = st.session_state.get("autofill_review_cache", {})
+        run_review_cache = {}
         with st.spinner("AI is reviewing document content and page evidence…"):
-            for doc, data in zip(docs, raw_files):
+            for index, (doc, data) in enumerate(zip(docs, raw_files)):
+                cache_key = doc.sha256 or f"{doc.filename}:{index}"
+                if cache_key in run_review_cache:
+                    document_ai.apply_review(doc, copy.deepcopy(run_review_cache[cache_key]))
+                    continue
                 if doc.warnings and not doc.page_count:
                     doc.ai_review = {"status": "skipped", "provider": "OpenRouter", "model": model,
                                      "message": "PDF could not be safely opened for AI review."}
+                    run_review_cache[cache_key] = doc.ai_review
                     continue
                 cached_review = review_cache.get(doc.sha256)
                 if cached_review:
                     document_ai.apply_review(doc, copy.deepcopy(cached_review))
+                    run_review_cache[cache_key] = doc.ai_review
                     continue
                 try:
                     review = document_ai.review_pdf(data, api_key, page_count=doc.page_count,
@@ -285,6 +292,7 @@ def _read_documents(uploads: list, use_ai: bool = False) -> list[documents.Parse
                                      "review_reason": ("Scanned PDF could not be reviewed; analyst confirmation is required."
                                                        if not doc.text.strip() else "")}
                     doc.warnings.append("AI review unavailable; local PDF extraction was used.")
+                run_review_cache[cache_key] = copy.deepcopy(doc.ai_review)
     return docs
 
 
@@ -358,10 +366,16 @@ def _execute(uploads: list, prev: dict | None, missing_documents: list[str]) -> 
     record = state.record_from_row(store.get_run(saved["run_id"]), stage_ms)
     ss["last_run"] = record
     ss["selected_run"] = saved["run_id"]
+    local_review_filenames = {
+        result.get("evidence", {}).get("filename") for result in results
+        if result.get("check_id") in {"GST_DOC_MATCH", "PAN_DOC_MATCH", "CHEQUE_MATCH"}
+        and result.get("status") == "fail" and result.get("severity") == "review"
+    }
     ss["review_pdf_bytes"] = {
         (saved["run_id"], doc.sha256): data
         for doc, data in zip(docs, pdf_bytes)
-        if doc.sha256 and doc.ai_review and doc.ai_review.get("needs_review")
+        if doc.sha256 and ((doc.ai_review and doc.ai_review.get("needs_review"))
+                           or doc.filename in local_review_filenames)
     }
     st.toast(f"Saved as run #{saved['run_id']} (v{saved['version']})")
     return record

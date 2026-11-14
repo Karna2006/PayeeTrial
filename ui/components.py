@@ -167,15 +167,28 @@ def doc_chips(docs: list[dict]) -> None:
 
 def ai_document_reviews(docs: list[dict]) -> None:
     """Show extracted evidence and advisory scores without mixing them into vendor risk."""
-    reviews = [(doc, doc.get("ai_review")) for doc in docs if doc.get("ai_review")]
+    reviews = []
+    seen = set()
+    duplicate_counts = {}
+    for index, doc in enumerate(docs):
+        review = doc.get("ai_review")
+        if not review:
+            continue
+        key = doc.get("sha256") or f"{doc.get('filename', 'document.pdf')}:{index}"
+        if key in seen:
+            duplicate_counts[key] = duplicate_counts.get(key, 1) + 1
+            continue
+        seen.add(key)
+        reviews.append((key, doc, review))
     if not reviews:
         return
     section("AI document review · advisory")
     st.caption("Document score measures classification, completeness, and readability. It is not a fraud score "
                "and never decides approval. Selectable-text quotes are checked against the cited page; visual-only "
                "scan values and their scores are estimates that cannot be independently grounded and require analyst confirmation.")
-    for doc, review in reviews:
-        with st.expander(f"{doc['filename']} · {review.get('status', 'unknown')}",
+    for key, doc, review in reviews:
+        duplicate_label = (f" · {duplicate_counts[key]} identical uploads" if key in duplicate_counts else "")
+        with st.expander(f"{doc['filename']} · {review.get('status', 'unknown')}{duplicate_label}",
                          expanded=review.get("needs_review", False)):
             if review.get("status") != "complete":
                 st.warning(review.get("message", "AI document review is unavailable."))

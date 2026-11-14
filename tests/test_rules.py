@@ -25,6 +25,9 @@ def test_b2_proprietor_name_required(run_sample):
 
 @pytest.mark.parametrize("changes, status, severity", [
     ({"contact.email": "accounts.nimbuslogistics.in"}, "fail", "blocker"),
+    ({"contact.email": "accounts@"}, "fail", "blocker"),
+    ({"contact.email": "@nimbuslogistics.in"}, "fail", "blocker"),
+    ({"contact.email": "accounts@localhost"}, "fail", "blocker"),
     ({"contact.email": "nimbus.accounts@gmail.com"}, "warn", "warn"),
     ({"contact.email": "accounts@nimbusgroup.in"}, "warn", "warn"),
     ({"contact.email": "accounts@nimbuslogistics.in", "website": "https://www.nimbuslogistics.in/contact"}, "pass", "blocker"),
@@ -206,16 +209,95 @@ def test_b15_cheque_mismatch(run_sample):
     assert chq["status"] == "fail" and "50200012345678" in chq["vendor_ask"]
 
 
-def test_b16_all_26_check_ids_are_reachable(run_sample):
+def test_b16_all_27_core_check_ids_are_reachable(run_sample):
     """Every check ID in Rules Spec §10 exists in the engine source."""
     spec = ("REQ_FIELDS EMAIL PHONE PINCODE PAN_FORMAT PAN_TYPE PAN_INITIAL GSTIN_VALID GSTIN_PAN_LINK GSTIN_STATE "
             "IFSC IFSC_BANK ACCOUNT_NO ACCOUNT_NAME DOC_UNKNOWN GST_DOC_MATCH PAN_DOC_MATCH CHEQUE_MATCH "
-            "DUP_VENDOR DUP_BANK RESUB_DIFF RESUB_BANK_CHANGE RESUB_CONTACT_CHANGE").split()
+            "DUP_VENDOR DUP_BANK DUP_NAME_REVIEW RESUB_DIFF RESUB_BANK_CHANGE RESUB_CONTACT_CHANGE").split()
     source = open(pipeline.__file__, encoding="utf-8").read()
     assert all(f'"{check_id}"' in source for check_id in spec)
     doc_ids = {f"DOC_{t.upper()}" for t in pipeline.REQUIRED_DOCS}
     assert doc_ids == {"DOC_GST_CERTIFICATE", "DOC_PAN_CARD", "DOC_CANCELLED_CHEQUE"}
-    assert len(spec) + len(doc_ids) == 26
+    assert len(spec) + len(doc_ids) == 27
+    assert '"DOC_TYPE_CONFLICT"' in source
+
+
+@pytest.mark.parametrize("doc_type,required_fields", [
+    ("gst_certificate", {"gstin", "legal_name", "status"}),
+    ("pan_card", {"pan", "name"}),
+    ("cancelled_cheque", {"ifsc", "account_number", "account_holder"}),
+])
+def test_required_document_evidence_cannot_be_missing(run_sample, doc_type, required_fields):
+    docs = parse_docs(load_submission(1))
+    doc_index = next(i for i, doc in enumerate(docs) if doc.doc_type == doc_type)
+    doc = docs[doc_index]
+    docs[doc_index] = ParsedDoc(doc.filename, doc.doc_type, doc.text, {}, sha256=doc.sha256)
+
+    out = run_sample(1, docs=docs)
+
+    match_id = {"gst_certificate": "GST_DOC_MATCH", "pan_card": "PAN_DOC_MATCH",
+                "cancelled_cheque": "CHEQUE_MATCH"}[doc_type]
+    result = by_id(out, match_id)
+    assert result["status"] == "fail" and result["severity"] == "review"
+    assert set(result["evidence"]["missing_fields"]) == required_fields
+    assert out["decision"]["status"] == "PENDING"
+
+
+def test_different_pan_documents_block_until_vendor_resolves_conflict(run_sample):
+    from dataclasses import replace
+
+    docs = parse_docs(load_submission(1))
+    pan_doc = next(doc for doc in docs if doc.doc_type == "pan_card")
+    docs.append(replace(pan_doc, filename="second_pan.pdf", sha256="different-content",
+                        fields={**pan_doc.fields, "pan": "AAACN4821J"}))
+
+    out = run_sample(1, docs=docs)
+
+    assert by_id(out, "DOC_TYPE_CONFLICT")["severity"] == "blocker"
+    assert out["decision"]["queue"] == "Awaiting vendor"
+
+
+def test_identical_ai_review_uploads_create_only_one_review_failure(run_sample):
+    from dataclasses import replace
+
+    docs = parse_docs(load_submission(1))
+    pan_index = next(i for i, doc in enumerate(docs) if doc.doc_type == "pan_card")
+    pan_doc = docs[pan_index]
+    ai_review = {"needs_review": True, "review_reason": "Visual-only candidate needs confirmation.",
+                 "model": "test-model"}
+    docs[pan_index] = replace(pan_doc, ai_review=ai_review)
+    docs.append(replace(pan_doc, filename="renamed-identical-pan.pdf", ai_review=ai_review))
+
+    out = run_sample(1, docs=docs)
+
+    assert len([r for r in out["results"] if r["check_id"] == "DOC_AI_REVIEW"]) == 1
+    assert by_id(out, "DOC_DUPLICATE_FILE") is not None
+
+
+def test_cheque_account_holder_must_match_form(run_sample):
+    from dataclasses import replace
+
+    docs = parse_docs(load_submission(1))
+    index = next(i for i, doc in enumerate(docs) if doc.doc_type == "cancelled_cheque")
+    cheque = docs[index]
+    docs[index] = replace(cheque, fields={**cheque.fields, "account_holder": "Unrelated Person"})
+
+    result = by_id(run_sample(1, docs=docs), "CHEQUE_MATCH")
+
+    assert result["status"] == "fail" and "account holder" in result["detail"]
+
+
+def test_pan_card_name_must_match_registered_entity(run_sample):
+    from dataclasses import replace
+
+    docs = parse_docs(load_submission(1))
+    index = next(i for i, doc in enumerate(docs) if doc.doc_type == "pan_card")
+    pan_doc = docs[index]
+    docs[index] = replace(pan_doc, fields={**pan_doc.fields, "name": "Different Corporation"})
+
+    result = by_id(run_sample(1, docs=docs), "PAN_DOC_MATCH")
+
+    assert result["status"] == "fail" and "does not match registered name" in result["detail"]
 
 
 def test_b17_proprietor_rule_when_legal_name_is_the_trade_name(run_sample):

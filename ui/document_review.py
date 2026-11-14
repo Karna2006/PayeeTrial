@@ -27,8 +27,23 @@ def _parsed_doc(row: dict) -> ParsedDoc:
 
 def render(record: dict) -> None:
     docs = record.get("docs") or []
-    pending = [(index, doc) for index, doc in enumerate(docs)
-               if (doc.get("ai_review") or {}).get("needs_review") and not doc.get("analyst_review")]
+    local_review_reasons = {
+        result.get("evidence", {}).get("filename"): result.get("detail", "Document evidence needs confirmation.")
+        for result in record.get("results", [])
+        if result.get("check_id") in {"GST_DOC_MATCH", "PAN_DOC_MATCH", "CHEQUE_MATCH"}
+        and result.get("status") == "fail" and result.get("severity") == "review"
+        and result.get("evidence", {}).get("filename")
+    }
+    pending = []
+    seen_pending = set()
+    for index, doc in enumerate(docs):
+        content_key = doc.get("sha256") or f"{doc.get('filename', 'document.pdf')}:{index}"
+        is_pending = ((doc.get("ai_review") or {}).get("needs_review")
+                      or doc.get("filename") in local_review_reasons)
+        if (content_key not in seen_pending and is_pending
+                and not doc.get("analyst_review")):
+            pending.append((index, doc))
+            seen_pending.add(content_key)
     history = record.get("review_history") or []
     if not pending and not history:
         return
@@ -58,7 +73,9 @@ def render(record: dict) -> None:
         cached = st.session_state.get("review_pdf_bytes", {})
         pdf = cached.get((record["run_id"], sha256)) if sha256 else None
         with st.container(border=True):
-            st.markdown(f"**{filename}** · {ai.get('review_reason') or 'AI extraction needs confirmation'}")
+            reason_text = (ai.get("review_reason") or local_review_reasons.get(filename)
+                           or "AI extraction needs confirmation")
+            st.markdown(f"**{filename}** · {reason_text}")
             if ai.get("fields"):
                 st.caption("AI candidate values are unconfirmed: " + ", ".join(
                     f"{key}={value}" for key, value in ai["fields"].items() if value))
@@ -92,9 +109,17 @@ def render(record: dict) -> None:
                          type="primary", disabled=not (reviewer.strip() and reason.strip() and checked)):
                 try:
                     parsed = [_parsed_doc(d) for d in docs]
-                    parsed[index] = reviews.confirm_document(parsed[index], doc_type=selected_type, fields=values,
-                                                             reviewer=reviewer, reason=reason,
-                                                             original_checked=checked)
+                    accepted = reviews.confirm_document(parsed[index], doc_type=selected_type, fields=values,
+                                                        reviewer=reviewer, reason=reason,
+                                                        original_checked=checked)
+                    accepted_hash = parsed[index].sha256
+                    for duplicate_index, duplicate in enumerate(parsed):
+                        if (duplicate_index == index or
+                                (accepted_hash and duplicate.sha256 == accepted_hash)):
+                            parsed[duplicate_index] = reviews.confirm_document(
+                                duplicate, doc_type=selected_type, fields=values, reviewer=reviewer,
+                                reason=reason, original_checked=checked)
+                    parsed[index] = accepted
                     outcome = pipeline.run_all(record["submission"], parsed, state.load_master(),
                                                state.previous_of(store.get_run(record["run_id"])))
                     now = datetime.now().isoformat(timespec="seconds")

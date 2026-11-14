@@ -97,7 +97,7 @@ def stage_intake(s: dict, ctx: dict) -> list[CheckResult]:
 
     email = get(s, "contact.email")
     dom = V.domain_of(email)
-    if email and "@" not in email:
+    if email and not V.email_valid(email):
         out.append(CheckResult("EMAIL", "intake", "Contact email", FAIL, f"'{email}' is not a valid email",
                                "blocker", vendor_ask="Please share a valid contact email address."))
     elif dom in V.FREE_EMAIL_DOMAINS and s.get("entity_type") != "Proprietorship":
@@ -284,21 +284,49 @@ def stage_bank(s: dict, ctx: dict) -> list[CheckResult]:
 def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
     out = []
     docs: list[ParsedDoc] = ctx.get("docs", [])
-    by_type = {}
-    for d in docs:
-        by_type.setdefault(d.doc_type, d)
-    for d in docs:
+    docs_by_type: dict[str, list[ParsedDoc]] = {}
+    unique_docs_by_type: dict[str, list[ParsedDoc]] = {}
+    for doc in docs:
+        docs_by_type.setdefault(doc.doc_type, []).append(doc)
+    for doc_type, typed_docs in docs_by_type.items():
+        seen_hashes = set()
+        unique_docs = []
+        for index, doc in enumerate(typed_docs):
+            content_key = doc.sha256 or f"{doc.filename}:{index}"
+            if content_key not in seen_hashes:
+                seen_hashes.add(content_key)
+                unique_docs.append(doc)
+        unique_docs_by_type[doc_type] = unique_docs
+
+    conflicted_types = set()
+    for doc_type in REQUIRED_DOCS:
+        typed_docs = unique_docs_by_type.get(doc_type, [])
+        if len(typed_docs) > 1:
+            conflicted_types.add(doc_type)
+            filenames = [doc.filename for doc in typed_docs]
+            out.append(CheckResult(
+                "DOC_TYPE_CONFLICT", "documents", f"Resolve multiple {DOC_LABEL[doc_type]} files", FAIL,
+                f"Different files were classified as {DOC_LABEL[doc_type]}; their evidence must be compared.",
+                "blocker", {"document_type": doc_type, "filenames": filenames},
+                vendor_ask=f"More than one different {DOC_LABEL[doc_type]} was uploaded. Please keep the correct one and remove the others.",
+                internal_note="Different-content documents of one required type are ambiguous; do not choose one automatically."))
+
+    seen_content_findings = set()
+    for index, d in enumerate(docs):
+        content_key = d.sha256 or f"{d.filename}:{index}"
         if d.doc_type == "unknown":
-            out.append(CheckResult("DOC_UNKNOWN", "documents", f"Recognise '{d.filename}'", WARN,
-                                   f"Couldn't recognise '{d.filename}' as any expected document", "warn"))
-        if d.ai_review and d.ai_review.get("needs_review") and not d.analyst_review:
+            if content_key not in seen_content_findings:
+                out.append(CheckResult("DOC_UNKNOWN", "documents", f"Recognise '{d.filename}'", WARN,
+                                       f"Couldn't recognise '{d.filename}' as any expected document", "warn"))
+        if (d.ai_review and d.ai_review.get("needs_review") and not d.analyst_review
+                and content_key not in seen_content_findings):
             reason = d.ai_review.get("review_reason") or "Document values came from visual-only AI extraction."
             out.append(CheckResult("DOC_AI_REVIEW", "documents", f"Review AI extraction for '{d.filename}'", FAIL,
                                    reason, "review", {"filename": d.filename,
                                    "model": d.ai_review.get("model", "AI")},
                                    internal_note="Confirm document type and extracted values against the original PDF "
                                                  "before approving. AI document scoring is advisory."))
-        if d.analyst_review:
+        if d.analyst_review and content_key not in seen_content_findings:
             audit = d.analyst_review
             out.append(CheckResult("DOC_ANALYST_REVIEW", "documents", f"Analyst confirmed '{d.filename}'", INFO,
                                    f"{audit.get('action', 'reviewed').capitalize()} by {audit.get('reviewer', 'analyst')}: "
@@ -306,6 +334,7 @@ def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
                                    {"filename": d.filename, "reviewed_at": audit.get("created_at"),
                                     "document_type": d.doc_type},
                                    internal_note="Accepted fields were checked against the original uploaded PDF."))
+        seen_content_findings.add(content_key)
 
     hashes: dict[str, list[str]] = {}
     for d in docs:
@@ -318,10 +347,11 @@ def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
                                "Identical PDF content was uploaded more than once: " + "; ".join(labels), "warn",
                                {"duplicate_filenames": [name for names in repeated for name in names]},
                                internal_note="SHA-256 content match; filenames may differ. Review whether each upload is needed."))
-    dup_types = [t for t in REQUIRED_DOCS if sum(1 for d in docs if d.doc_type == t) > 1]
+    dup_types = [t for t in REQUIRED_DOCS if len(docs_by_type.get(t, [])) > 1]
 
     for t in REQUIRED_DOCS:
-        if t not in by_type:
+        typed_docs = unique_docs_by_type.get(t, [])
+        if not typed_docs:
             extra = ""
             if dup_types:
                 extra = f" We received {DOC_LABEL[dup_types[0]]} twice; one of the uploads may have been the wrong file."
@@ -330,19 +360,30 @@ def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
                                    "blocker", vendor_ask=f"Please upload your {DOC_LABEL[t]}.{extra}"))
         else:
             out.append(CheckResult(f"DOC_{t.upper()}", "documents", f"{DOC_LABEL[t].capitalize()} provided", PASS,
-                                   f"Found in '{by_type[t].filename}'"))
+                                   f"Found in '{typed_docs[0].filename}'"))
 
-    gst = by_type.get("gst_certificate")
+    gst = unique_docs_by_type.get("gst_certificate", [None])[0]
+    if "gst_certificate" in conflicted_types:
+        gst = None
+    if gst:
+        f = gst.fields
+        missing = [key for key in ("gstin", "legal_name", "status") if not str(f.get(key) or "").strip()]
+        if missing:
+            out.append(CheckResult(
+                "GST_DOC_MATCH", "documents", "GST certificate matches form", FAIL,
+                "Could not read required evidence from the GST certificate: " + ", ".join(missing), "review",
+                {"missing_fields": missing, "filename": gst.filename},
+                internal_note="Check the original certificate or request a clearer copy before approval."))
+            gst = None
     if gst:
         f = gst.fields
         problems = []
-        if f.get("gstin") and f["gstin"] != s["gstin"]:
+        if V.clean_id(f["gstin"]) != s["gstin"]:
             problems.append(f"certificate GSTIN {f['gstin']} ≠ form GSTIN {s['gstin']}")
-        if f.get("legal_name"):
-            sim = V.name_similarity(f["legal_name"], s.get("legal_name", ""))
-            if sim < 90:
-                problems.append(f"certificate is for '{f['legal_name']}', not '{s.get('legal_name')}' (similarity {sim})")
-        if (f.get("status") or "").lower() in {"cancelled", "suspended", "inactive"}:
+        sim = V.name_similarity(f["legal_name"], s.get("legal_name", ""))
+        if sim < 90:
+            problems.append(f"certificate is for '{f['legal_name']}', not '{s.get('legal_name')}' (similarity {sim})")
+        if f["status"].strip().lower() in {"cancelled", "suspended", "inactive"}:
             problems.append(f"registration status is {f['status']}")
         if problems:
             out.append(CheckResult("GST_DOC_MATCH", "documents", "GST certificate matches form", FAIL,
@@ -354,35 +395,69 @@ def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
             out.append(CheckResult("GST_DOC_MATCH", "documents", "GST certificate matches form", PASS,
                                    f"GSTIN + legal name on certificate match ({f.get('status', 'status n/a')})", evidence=f))
 
-    pan_doc = by_type.get("pan_card")
-    if pan_doc and pan_doc.fields.get("pan"):
-        card = pan_doc.fields["pan"]
-        if card != s["pan"]:
-            emb = V.gstin_embedded_pan(s["gstin"]) if V.gstin_format_valid(s["gstin"]) else ""
-            note = " It matches the PAN inside your GSTIN, so the form entry is likely a typo." if card == emb else ""
-            out.append(CheckResult("PAN_DOC_MATCH", "documents", "PAN card matches form", FAIL,
-                                   f"PAN card shows {card}, form says {s['pan']}", "blocker", pan_doc.fields,
-                                   vendor_ask=f"Your PAN card shows {card} but the form says {s['pan']}.{note} "
-                                              "Please correct the PAN on the form."))
+    pan_doc = unique_docs_by_type.get("pan_card", [None])[0]
+    if "pan_card" in conflicted_types:
+        pan_doc = None
+    if pan_doc:
+        f = pan_doc.fields
+        missing = [key for key in ("pan", "name") if not str(f.get(key) or "").strip()]
+        if missing:
+            out.append(CheckResult(
+                "PAN_DOC_MATCH", "documents", "PAN card matches form", FAIL,
+                "Could not read required evidence from the PAN card: " + ", ".join(missing), "review",
+                {"missing_fields": missing, "filename": pan_doc.filename},
+                internal_note="Check the original PAN card or request a clearer copy before approval."))
         else:
-            out.append(CheckResult("PAN_DOC_MATCH", "documents", "PAN card matches form", PASS, f"PAN card shows {card}"))
+            card = V.clean_id(f["pan"])
+            problems = []
+            if card != s["pan"]:
+                problems.append(f"PAN card shows {card}, form says {s['pan']}")
+            name_similarity = V.name_similarity(f["name"], s.get("legal_name", ""))
+            if name_similarity < 90:
+                problems.append(f"PAN card name '{f['name']}' does not match registered name "
+                                f"'{s.get('legal_name')}' (similarity {name_similarity})")
+            if problems:
+                emb = V.gstin_embedded_pan(s["gstin"]) if V.gstin_format_valid(s["gstin"]) else ""
+                note = " The card PAN matches the PAN inside your GSTIN." if card == emb else ""
+                out.append(CheckResult("PAN_DOC_MATCH", "documents", "PAN card matches form", FAIL,
+                                       "; ".join(problems), "blocker", f,
+                                       vendor_ask="Your PAN card details do not match the submission (" + "; ".join(problems)
+                                                  + "). Please confirm the correct PAN and registered name." + note))
+            else:
+                out.append(CheckResult("PAN_DOC_MATCH", "documents", "PAN card matches form", PASS,
+                                       f"PAN and name on the card match the submission", evidence=f))
 
-    chq = by_type.get("cancelled_cheque")
+    chq = unique_docs_by_type.get("cancelled_cheque", [None])[0]
+    if "cancelled_cheque" in conflicted_types:
+        chq = None
     if chq:
         f, b = chq.fields, s.get("bank", {})
-        problems = []
-        if f.get("account_number") and f["account_number"] != b.get("account_number"):
-            problems.append(f"cheque A/C {f['account_number']} ≠ form A/C {b.get('account_number')}")
-        if f.get("ifsc") and f["ifsc"] != b.get("ifsc"):
-            problems.append(f"cheque IFSC {f['ifsc']} ≠ form IFSC {b.get('ifsc')}")
-        if problems:
+        missing = [key for key in ("ifsc", "account_number", "account_holder")
+                   if not str(f.get(key) or "").strip()]
+        if missing:
+            out.append(CheckResult(
+                "CHEQUE_MATCH", "documents", "Cancelled cheque matches bank details", FAIL,
+                "Could not read required evidence from the cancelled cheque: " + ", ".join(missing), "review",
+                {"missing_fields": missing, "filename": chq.filename},
+                internal_note="Check the original cheque or request a clearer copy before approval."))
+        else:
+            problems = []
+            if V.clean_id(f["account_number"]) != b.get("account_number"):
+                problems.append(f"cheque A/C {f['account_number']} ≠ form A/C {b.get('account_number')}")
+            if V.clean_id(f["ifsc"]) != b.get("ifsc"):
+                problems.append(f"cheque IFSC {f['ifsc']} ≠ form IFSC {b.get('ifsc')}")
+            holder_similarity = V.name_similarity(f["account_holder"], b.get("account_holder", ""))
+            if holder_similarity < 88:
+                problems.append(f"cheque account holder '{f['account_holder']}' does not match form holder "
+                                f"'{b.get('account_holder', '')}' (similarity {holder_similarity})")
+        if chq and not missing and problems:
             out.append(CheckResult("CHEQUE_MATCH", "documents", "Cancelled cheque matches bank details", FAIL,
                                    "; ".join(problems), "blocker", f,
                                    vendor_ask="Your cancelled cheque doesn't match the bank details on the form ("
                                               + "; ".join(problems) + "). Please correct one of them."))
-        else:
+        elif chq and not missing:
             out.append(CheckResult("CHEQUE_MATCH", "documents", "Cancelled cheque matches bank details", PASS,
-                                   f"A/C + IFSC on cheque match form", evidence=f))
+                                   "Account number, IFSC, and account holder on the cheque match the form", evidence=f))
     return out
 
 
@@ -576,9 +651,14 @@ def run(sub: dict, docs: list[ParsedDoc], master: pd.DataFrame, previous: dict |
         delay: float = 0.0) -> Iterator[tuple[str, str, list[CheckResult], float]]:
     """Yields (stage_key, stage_label, results, elapsed_ms) as each stage finishes."""
     s = normalise_submission(sub)
-    doc_fields: dict = {}
-    for d in docs:  # first upload of each type wins, same as stage_documents
-        doc_fields.setdefault(d.doc_type, d.fields)
+    docs_by_type: dict[str, dict[str, ParsedDoc]] = {}
+    for index, doc in enumerate(docs):
+        content_key = doc.sha256 or f"{doc.filename}:{index}"
+        docs_by_type.setdefault(doc.doc_type, {}).setdefault(content_key, doc)
+    # Identity hints must not pick an arbitrary candidate when same-type PDFs
+    # contain different content; stage_documents will route that conflict to review.
+    doc_fields = {doc_type: next(iter(unique_docs.values())).fields
+                  for doc_type, unique_docs in docs_by_type.items() if len(unique_docs) == 1}
     ctx = {"docs": docs, "master": master, "previous": previous, "doc_fields": doc_fields}
     for key, label in STAGES:
         t0 = time.perf_counter()

@@ -88,11 +88,31 @@ class DocumentAIError(RuntimeError):
 
 
 def _normalise_quote(value: str) -> str:
+    # Models often wrap a copied value in Markdown emphasis. Remove those
+    # formatting markers before checking that the quote occurs on the page.
+    value = re.sub(r"[*_~`]", "", value)
     return re.sub(r"\s+", " ", value).strip().casefold()
 
 
 def _normalise_value(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.casefold())
+
+
+def _contains_exact_value(value: str, text: str) -> bool:
+    """Match a complete value across whitespace/punctuation, never a substring."""
+    expected = _normalise_value(value)
+    if not expected:
+        return False
+    tokens = re.findall(r"[a-z0-9]+", text.casefold())
+    for start in range(len(tokens)):
+        combined = ""
+        for token in tokens[start:]:
+            combined += token
+            if combined == expected:
+                return True
+            if len(combined) >= len(expected):
+                break
+    return False
 
 
 def _request(data: bytes, api_key: str, model: str, timeout: float) -> dict[str, Any]:
@@ -183,9 +203,11 @@ def review_pdf(data: bytes, api_key: str, *, page_count: int | None,
         else:
             text_verified = bool(normalized_pages and normalized_quote in normalized_pages[page - 1])
         candidate_value = fields.get(field, "")
-        if candidate_value and _normalise_value(candidate_value) in _normalise_value(quote):
-            if not text_layer.strip() or text_verified:
-                supported_fields.add(field)
+        cited_page = page_texts[page - 1] if normalized_pages is not None and normalized_pages else text_layer
+        if (candidate_value and _contains_exact_value(candidate_value, quote)
+                and (not text_layer.strip() or
+                     (text_verified and _contains_exact_value(candidate_value, cited_page)))):
+            supported_fields.add(field)
         seen_evidence_fields.add(field)
         evidence.append({"field": field, "page_number": page, "quote": quote.strip(),
                          "text_verified": text_verified})

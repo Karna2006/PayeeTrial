@@ -19,10 +19,12 @@ Every check, its exact logic, its severity, and the exact wording of what we tel
 
 ## 1. Stage: INTAKE & COMPLETENESS
 
+Email syntax is validated with a bounded local part and domain syntax (including a valid suffix); merely containing `@` does not pass validation.
+
 | ID | Check | Logic | Outcome | Severity | Vendor ask | Internal note |
 |---|---|---|---|---|---|---|
 | `REQ_FIELDS` | Required fields present | Every field in the required list (Data Schema §1) is non-blank. If entity_type = Proprietorship, `proprietor_name` is also required | ❌ if any missing (list them all in one result) | blocker | "Please fill in: {comma-separated labels}." | |
-| `EMAIL` | Contact email | (a) contains `@`, else ❌; (b) domain in FREE_EMAIL_DOMAINS **and** entity ≠ Proprietorship → ⚠️; (c) website given and its domain ≠ email domain → ⚠️; else ✅ | ❌ / ⚠️ / ✅ | (a) blocker, (b)(c) warn | (a) "Please share a valid contact email address." | (b) "Free-mail domain on a company submission. Weak signal on its own; weigh with other checks." tag `risk-signal` · (c) "Domain mismatch, often benign (group email domains)." |
+| EMAIL | Contact email | Must match valid email syntax with a non-empty local part, valid domain labels and suffix, total length <=254, local part <=64; free domain and website mismatch rules then apply | fail / warn / pass | Invalid email is a blocker; domain signals are warnings | "Please share a valid contact email address." | Free-mail and website mismatch signals are not conclusive on their own. |
 | `PHONE` | Contact phone | Last 10 digits: length 10 and first digit ∈ {6,7,8,9} | ❌ / ✅ | blocker | "Please share a valid 10-digit mobile number for verification calls." | |
 | `PINCODE` | PIN code | 6 digits, first ≠ 0 (only emitted on failure) | ❌ | blocker | "Please correct the PIN code of your registered address." | |
 
@@ -58,18 +60,22 @@ Thresholds 88 / 70 were tuned on the sample set; examples: "NIMBUS LOGISTICS PVT
 
 ## 4. Stage: DOCUMENT CROSS-CHECK
 
+**Fail-closed evidence rules:** the summarized table below is supplemented by these required checks. GST certificates must provide `gstin`, `legal_name`, and `status`; PAN cards must provide `pan` and `name`; cancelled cheques must provide `ifsc`, `account_number`, and `account_holder`. Missing required values produce a `review` failure and keep the decision pending. PAN card name must have at least 90% similarity to the submitted legal name. Cheque account holder must have at least 88% similarity to the submitted bank account holder. If different-content PDFs are classified as the same required type, `DOC_TYPE_CONFLICT` blocks the submission and asks the vendor to keep the correct file; those fields are not used as identity hints. Byte-identical copies count once for matching and AI review.
+
+Email address syntax must be valid before free-domain and website-domain signals are evaluated; an address containing `@` alone is insufficient.
+
 Required document types: `gst_certificate`, `pan_card`, `cancelled_cheque`. Classification is **by content**, never by filename (see Data Schema §2).
 
-| ID | Check | Logic | Outcome | Severity | Vendor ask |
+| ID | Check | Logic | Outcome | Severity | Vendor ask | Internal note |
 |---|---|---|---|---|---|
-| `DOC_UNKNOWN` | Recognise '{filename}' | One result per upload classified `unknown` | ⚠️ | warn | (none) |
-| `DOC_AI_REVIEW` | Review AI extraction for '{filename}' | Optional OpenRouter review: local PDF text absent, provider unavailable for an image-only PDF, local and AI classifications disagree, or required local/AI fields differ or are missing | ❌ | review | (none) | "Confirm document type and extracted values against the original PDF before approving. AI document scoring is advisory." |
-| `DOC_GST_CERTIFICATE` / `DOC_PAN_CARD` / `DOC_CANCELLED_CHEQUE` | {Type} provided | At least one upload classified as that type. Detail on failure lists what *was* received, e.g. "(GST Registration Certificate, PAN Card, PAN Card)" | ❌ / ✅ | blocker | "Please upload your {type}." + if some type was uploaded twice: " We received {type} twice; one of the uploads may have been the wrong file." |
-| `GST_DOC_MATCH` ⭐ | GST certificate matches form | Problems list: (a) cert gstin ≠ form gstin; (b) name_similarity(cert legal_name, form legal_name) < 90; (c) cert status ∈ {cancelled, suspended, inactive}. Any problem → ❌ | ❌ / ✅ | blocker | "The GST certificate you uploaded doesn't match your submission ({problems joined by '; '}). Please upload the certificate for {legal_name} with GSTIN {gstin}." |
-| `PAN_DOC_MATCH` | PAN card matches form | card pan ≠ form pan → ❌. If card pan == gstin[2:12], add the typo hint | ❌ / ✅ | blocker | "Your PAN card shows {card} but the form says {pan}.{ hint} Please correct the PAN on the form." hint = " It matches the PAN inside your GSTIN, so the form entry is likely a typo." |
-| `CHEQUE_MATCH` | Cancelled cheque matches bank details | Problems: cheque account ≠ form account; cheque IFSC ≠ form IFSC | ❌ / ✅ | blocker | "Your cancelled cheque doesn't match the bank details on the form ({problems}). Please correct one of them." |
+| DOC_UNKNOWN | Recognise filename | One result per distinct uploaded content classified unknown | warn | warn | None | Unknown extras do not replace required document types. |
+| DOC_TYPE_CONFLICT | Resolve multiple required documents of the same type | Different-content PDFs classified as one required type block submission; identical copies are deduplicated and conflicting docs are not identity hints | fail | blocker | Keep the correct file and remove the others. | The engine does not choose one automatically. |
+| DOC_AI_REVIEW | Review AI extraction | Optional AI review routes scans, classifier disagreements, and missing or differing evidence to confirmation | fail | review | No vendor ask | Confirm document type and values against the original PDF before approving; AI scoring is advisory. |
+| DOC_GST_CERTIFICATE / DOC_PAN_CARD / DOC_CANCELLED_CHEQUE | Required document provided | At least one upload must be classified as each required type | fail / pass | blocker | Please upload the missing document. | Identical files count once for matching. |
+| GST_DOC_MATCH | GST certificate matches form | Required gstin, legal_name, and status must be extracted or route to analyst review; otherwise GSTIN must match, legal-name similarity must be >=90, and status must not be cancelled, suspended, or inactive | review / blocker / pass | review for missing values; blocker for mismatch | Ask for the correct certificate when values mismatch. | Check the original certificate when evidence is unreadable. |
+| PAN_DOC_MATCH | PAN card matches form | Required PAN and name must be extracted or route to analyst review; otherwise PAN must match and card-name similarity to registered legal name must be >=90 | review / blocker / pass | review for missing values; blocker for mismatch | Ask the vendor to confirm the correct PAN and registered name. | Check the original card when evidence is unreadable. |
+| CHEQUE_MATCH | Cancelled cheque matches bank details | Required IFSC, account_number, and account_holder must be extracted or route to analyst review; otherwise cheque IFSC and account must match and holder similarity to form must be >=88 | review / blocker / pass | review for missing values; blocker for mismatch | Ask the vendor to correct the mismatch. | Check the original cheque when evidence is unreadable. |
 
-> v1 limitation: the cheque's printed account-holder name is extracted but not yet compared (the form's holder name is already checked by `ACCOUNT_NAME`). Easy v2 addition.
 
 ---
 
@@ -127,7 +133,7 @@ risk_level: <20 Low · 20–49 Medium · ≥50 High
 |---|---|---|
 | APPROVED | `Vendor onboarding approved: {company} [{ref}]` | Approved, bank verified, quote ref on invoices |
 | PENDING · Awaiting vendor | `Action needed: {n} item(s) to complete your vendor registration [{ref}]` | "We're almost there…" + numbered asks + "You only need to update these items; everything else has been verified. Just resubmit with reference {ref}." |
-| PENDING · Compliance review / Procurement review | `Your vendor registration is under review [{ref}]` | Neutral: with the team for a final verification step; we may call you on the number **originally registered**; no action needed. **No asks, no reasons.** |
+| PENDING - Compliance review / Procurement review | Your vendor registration is under review [{ref}] | First submission: with the team for a final verification step; may call the number provided. Resubmission: may call the originally registered number. No asks or reasons. |
 | REJECTED | `Update on your vendor registration [{ref}]` | Thank you; can't proceed; bullet list of asks (only the non-empty, safe ones); if none: "We were unable to verify the details provided." + reply if you believe this is a mistake |
 
 Sign-off: "Thanks,\nProcurement Team". Greeting: "Hi {contact.name},".
@@ -168,10 +174,10 @@ Verified identical to `python-stdnum`'s `stdnum.in_.gstin.is_valid` on all sampl
 1. intake: REQ_FIELDS, EMAIL, PHONE, PINCODE
 2. identity: PAN_FORMAT, PAN_TYPE, PAN_INITIAL, GSTIN_VALID, GSTIN_PAN_LINK, GSTIN_STATE
 3. bank: IFSC, IFSC_BANK, ACCOUNT_NO, ACCOUNT_NAME
-4. documents: DOC_UNKNOWN*, DOC_AI_REVIEW (optional), DOC_ANALYST_REVIEW (after confirmation), DOC_DUPLICATE_FILE (when identical content is uploaded more than once), DOC_GST_CERTIFICATE, DOC_PAN_CARD, DOC_CANCELLED_CHEQUE, GST_DOC_MATCH, PAN_DOC_MATCH, CHEQUE_MATCH
+4. documents: DOC_UNKNOWN*, DOC_TYPE_CONFLICT (different-content files of one required type), DOC_AI_REVIEW (optional), DOC_ANALYST_REVIEW (after confirmation), DOC_DUPLICATE_FILE (identical content), required document-presence checks, and GST_DOC_MATCH, PAN_DOC_MATCH, CHEQUE_MATCH
 5. fraud: DUP_VENDOR, DUP_BANK, DUP_NAME_REVIEW, RESUB_DIFF, RESUB_BANK_CHANGE, RESUB_CONTACT_CHANGE
 
-Total: 27 core checks. Conditional findings include DOC_AI_REVIEW, DOC_DUPLICATE_FILE, and DOC_ANALYST_REVIEW.
+Total: 27 core checks. Conditional findings also include DOC_UNKNOWN, DOC_TYPE_CONFLICT, DOC_AI_REVIEW, DOC_DUPLICATE_FILE, and DOC_ANALYST_REVIEW.
 
 `DOC_DUPLICATE_FILE` compares SHA-256 hashes of uploaded bytes, so a byte-identical PDF remains detectable after a filename change. It is a warning and includes internal filenames only.
 

@@ -4,7 +4,7 @@
 
 PayeeTrail takes a vendor's onboarding submission (form + PDFs), cross-checks every field and document against each other and against the existing vendor master, and returns **Approved / Pending / Rejected**, with the reasoning visible stage by stage and a ready-to-send message telling the vendor exactly what to fix.
 
-- **27 core checks across 5 stages** plus conditional AI, duplicate-file, and analyst-review findings: intake → identity (PAN + GSTIN) → bank → document cross-check → duplicate & fraud screening
+- **27 core checks across 5 stages** plus conditional document classification, conflict, AI review, duplicate-file, and analyst-review findings: intake -> identity (PAN + GSTIN) -> bank -> document cross-check -> duplicate & fraud screening
 - **Catches what field validators miss:** the PAN inside the GSTIN, GSTIN state vs address, documents classified by content, third-party bank accounts, bank accounts shared with existing vendors, unrequested bank changes on resubmission
 - **Rules decide, AI assists:** one OpenRouter model can classify PDFs, extract page evidence, score document quality, and suggest email wording; deterministic checks still own the final outcome
 - **Offline by default:** AI is opt-in. The same model handles document review and optional email polishing
@@ -50,7 +50,7 @@ GitHub Actions runs the same suite on pushes and pull requests. See [`docs/13_TE
 | 1 | Happy path | APPROVED |
 | 2 | Cross-field inconsistencies (PAN typo + GSTIN from the wrong state) | PENDING · Awaiting vendor |
 | 3 | Third-party bank account already used by another vendor | REJECTED |
-| 4 | Wrong documents (sister company's GST cert; "cheque" that's a PAN card) | PENDING · Awaiting vendor |
+| 4 | Wrong documents (sister-company GST cert; two distinct PAN cards, one uploaded as a cheque) | PENDING - Awaiting vendor |
 | 5 | Resubmission of #2 that quietly swaps the bank account (**run after #2**) | PENDING · Compliance review |
 | 6 | Proprietorship paid into the owner's personal account (legitimate) | APPROVED |
 

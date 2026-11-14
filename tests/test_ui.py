@@ -35,7 +35,7 @@ def run_scenario(at: AppTest, n: int) -> AppTest:
 
 
 def page_text(at: AppTest) -> str:
-    return " ".join(str(el.value) for el in [*at.markdown, *at.caption, *at.info, *at.code])
+    return " ".join(str(el.value) for el in [*at.markdown, *at.caption, *at.info, *at.error, *at.code])
 
 
 def goto(at: AppTest, page: str) -> AppTest:
@@ -127,7 +127,7 @@ def test_d3_resubmission_flow(app):
 def test_d3b_run_is_blocked_until_fields_and_document_slots_are_present(app):
     app.button(key="btn_blank").click().run()
     assert app.button(key="btn_run").disabled
-    assert "Complete the required items before running verification." in page_text(app)
+    assert "Cannot run verification yet." in page_text(app)
     assert store.all_runs() == []
 
     app.selectbox(key="ui_scenario").set_value(SCENARIOS[6]).run()
@@ -143,7 +143,7 @@ def test_d3b_run_is_blocked_until_fields_and_document_slots_are_present(app):
     app.run()
     app.button(key="btn_clear_attached").click().run()
     assert app.button(key="btn_run").disabled
-    assert "Documents to upload" in page_text(app)
+    assert "Required documents:" in page_text(app)
 
 
 @pytest.mark.parametrize("attached,uploads,over_limit", [

@@ -25,7 +25,7 @@ If short on time: drop #3 from the video (keep it for the live interview).
 3. #2 Cross-field → PENDING (Awaiting vendor)
 4. #5 Resubmission → PENDING (Compliance review) ⭐ the moment to slow down
 5. #3 Third-party bank → REJECTED
-6. #4 Wrong documents → PENDING (show the doc chip "named like a cheque, reads as PAN card")
+6. #4 Wrong documents -> PENDING (Awaiting vendor: resolve the two-PAN conflict, replace the GST certificate, and upload the cancelled cheque)
 7. #6 Proprietorship → APPROVED ("the rules aren't blunt")
 8. Dashboard → Run detail of #5 (version history) → Outbox
 9. **Offer:** "Want to break it? Give me any change and I'll run it live." Good live tweaks to have ready:
