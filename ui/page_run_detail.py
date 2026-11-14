@@ -6,6 +6,7 @@ import streamlit as st
 from engine import pipeline, store
 from engine.documents import DOC_TYPES
 from ui import components as C
+from ui import document_review
 from ui import state
 from ui.page_dashboard import run_label
 
@@ -20,7 +21,7 @@ def _version_history(runs: list[dict], current: dict) -> None:
         c[1].markdown(str(r["created_at"]).replace("T", " "))
         c[2].markdown(C.status_pill(r["status"]), unsafe_allow_html=True)
         c[3].markdown(r["queue"])
-        c[4].markdown(f"risk {r['risk_score']}")
+        c[4].markdown(f"rule {r['risk_score']}")
         if r["run_id"] == current["run_id"]:
             c[5].caption("shown below")
         else:
@@ -45,6 +46,9 @@ def render() -> None:
     record = state.record_from_row(row)
 
     C.decision_card(record["decision"], record)
+    if record.get("original_decision"):
+        st.caption(f"Original automated result: {record['original_decision']['status']} · "
+                   f"rule score {record['original_decision']['risk_score']}. Analyst review is separately audited.")
     _version_history(runs, row)
 
     checks, facts = st.columns([3, 2])
@@ -57,7 +61,11 @@ def render() -> None:
         for d in record["docs"]:
             st.markdown(f"`{d['filename']}` · {DOC_TYPES.get(d['doc_type'], d['doc_type'])}")
             C.kv_table(d.get("fields") or {})
+            if d.get("autofill_fields"):
+                st.caption("Form autofill provenance")
+                st.json(d["autofill_fields"])
         st.subheader("Submission")
         C.kv_table(pipeline._flatten(record["submission"]))
 
     C.result_tabs(record)
+    document_review.render(record)

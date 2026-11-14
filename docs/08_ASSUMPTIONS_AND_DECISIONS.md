@@ -20,7 +20,7 @@ The brief says: *"treat ambiguity as part of the exercise. Make an assumption, n
 
 | # | Assumption | Why | If wrong |
 |---|---|---|---|
-| B1 | Documents are **digital (text-layer) PDFs** | Most GST certificates are downloaded from the GST portal as digital PDFs | Add an OCR step (Tesseract/PaddleOCR) before the same parser |
+| B1 | Digital PDFs use local extraction; optional OpenRouter vision can inspect scanned PDFs | Keeps the core offline while enabling the requested video feature | Scanned/model-only values stay in Compliance review until a human confirms the original; free provider is synthetic-data-only |
 | B2 | GST certificates follow the **REG-06** layout | It's the government standard | Fingerprints and regexes are isolated in `documents.py` |
 | B3 | The **vendor master is the source of truth** for existing vendors and is a CSV export | Simplest integration; every ERP can export one | Swap for an ERP API read |
 | B4 | A **submission reference** identifies a vendor's application across resubmissions | Mirrors how a portal would track an application | Could key on PAN instead |
@@ -31,7 +31,7 @@ The brief says: *"treat ambiguity as part of the exercise. Make an assumption, n
 
 | # | Decision | Alternatives considered | Why this |
 |---|---|---|---|
-| C1 | **Rules decide, LLM assists** | LLM-as-judge for everything | Determinism, auditability, zero cost, no hallucinated approvals. The LLM is used where language matters (email tone) behind a guardrail |
+| C1 | **Rules decide, LLM assists** | LLM-as-judge for everything | OpenRouter classification, field candidates, and score are shown for review; local extraction supplies rule inputs, and scans or conflicts require human review |
 | C2 | **Severity-based outcome** (warn/blocker/review/reject) instead of a pure score threshold | Weighted score only | A score can't express "one fraud signal outweighs ten typos." Severity gives the status; the score gives a ranking |
 | C3 | **Three-way status with sub-queues** | Binary approve/reject | The brief asks for approved/pending/rejected; queues tell *who* acts next (vendor vs compliance) |
 | C4 | **Classify documents by content, not filename** | Trust upload slots or filenames | Wrong-document uploads are a stated pain point; filenames lie |
@@ -54,10 +54,12 @@ The brief says: *"treat ambiguity as part of the exercise. Make an assumption, n
 | I5 | Entity type sits just above the form, not inside it | Widgets inside `st.form` don't rerun, and the proprietor field must appear as soon as Proprietorship is picked |
 | I6 | `.gitattributes` marks `*.pdf` as binary | The synthetic PDFs are ASCII, so git on Windows was treating them as text and rewriting line endings |
 | I7 | `REQUESTED_BY` / `classify_changes` live in `engine/pipeline.py` as `09_PLAN.md` says | This keeps the file over the ~300-line guideline; splitting it would mean rewriting the reference engine, which CLAUDE.md forbids |
+| I8 | Required fields and the three required document slots disable Run until present | Running an obviously incomplete submission adds no value; populated but invalid values still reach the engine so it can explain the problem |
+| I9 | PDF intake is capped at 10 MB, 40 pages, and 300,000 extracted characters | The synchronous local app needs predictable resource use; production still needs isolated parsing and malware scanning |
 
 ## D. Known limitations (say them before they're asked)
 
-1. No OCR: scanned image PDFs would be classified `unknown`.
+1. OpenRouter PDF review can inspect scanned pages when explicitly enabled. This v1 does not persist a standalone OCR transcript; visual-only extraction stays in Compliance review until a reviewer confirms it. The free endpoint must only receive synthetic examples.
 2. No live verification that the GSTIN is *active* on the GST portal, or that the account holder name matches at the bank (penny-drop). Both are paid or gated APIs; the check points exist for adapters.
 3. The cheque's printed holder name is extracted but not yet compared.
 4. The dashboard on Streamlit Cloud resets when the app sleeps (ephemeral disk). Locally it persists.
@@ -68,7 +70,7 @@ The brief says: *"treat ambiguity as part of the exercise. Make an assumption, n
 
 1. **Penny-drop + GSTN-active adapters**: closes the two biggest verification gaps.
 2. **Vendor portal with magic-link resubmission**: prefilled, only failing fields editable.
-3. **OCR + LLM extraction fallback** for scanned and non-standard documents, with confidence scores and human confirmation below a threshold.
+3. **Production OCR worker** for scanned documents, with page-level confidence and human confirmation below a threshold; OpenRouter's free endpoint is only the synthetic-data demo path.
 4. **Sanctions/PEP screening** (OFAC SDN, OpenSanctions).
 5. **Feedback loop**: reviewer overrides are logged and used to tune thresholds.
 6. **ERP write-back** of approved vendors (SAP / NetSuite / Tally).

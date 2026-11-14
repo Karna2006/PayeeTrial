@@ -22,11 +22,10 @@ You are helping build **PayeeTrail**, a vendor-onboarding verification app for a
 
 ## 3. Hard constraints (never violate)
 
-1. **₹0 / open-source only.** No paid APIs, no API keys, no cloud services besides Streamlit Community Cloud hosting.
-2. **Must run fully offline.** No network calls in the pipeline. (The only optional network call is to local Ollama at `localhost`.)
-3. **Deterministic decisions.** No LLM in any check or in `decide()`. The LLM is allowed only in `messages.polish_with_llm`, behind its guardrail.
+1. **Offline core.** The app and rules engine work without API keys. OpenRouter document review and email polish are opt-in network features and use the same configured model.
+2. **Rules own outcomes.** AI may classify/extract/score document evidence, but its candidate fields never feed verification checks or approval. Visual-only extraction and classifier disagreement route to Compliance review.
 4. **Stack is fixed:** Python 3.10+, Streamlit, pandas, SQLite (stdlib), pypdf, rapidfuzz, python-stdnum, reportlab, pytest. Ask before adding any dependency.
-5. **Respect Non-goals** (`01_PRD.md` §5): no auth, no real email sending, no OCR, no external verification APIs, no dark mode, no Docker, no React/Next.js.
+5. **Respect Non-goals** (`01_PRD.md` §5): no auth, no real email sending, no government verification APIs, no dark mode, no Docker, no React/Next.js.
 6. **Never leak internal fraud context into vendor-facing text** (e.g. another vendor's ID or name). Vendor email ≠ internal note.
 
 ## 4. Coding standards
@@ -72,8 +71,8 @@ python -m pytest tests/test_scenarios.py -q
 # reset the audit DB
 rm -f data/runs.db
 
-# optional local LLM for email polish
-ollama pull qwen2.5:7b-instruct && ollama serve
+# optional free hosted model (synthetic demo data only)
+# add OPENROUTER_API_KEY to .streamlit/secrets.toml
 ```
 
 ## 7. Definition of done (whole project)
@@ -93,9 +92,10 @@ ui/page_dashboard.py   KPIs, charts, work queue, history
 ui/page_run_detail.py  full record of one run + version history
 ui/page_outbox.py      generated vendor emails
 engine/validators.py   PAN/GSTIN/IFSC/name helpers + reference data
-engine/documents.py    PDF → ParsedDoc (classify by content)
+engine/documents.py    PDF → ParsedDoc (local text classification and extraction)
+services/document_ai.py optional OpenRouter PDF classification, evidence extraction and advisory score
 engine/pipeline.py     5 stages, 26 checks, decide()
-engine/messages.py     vendor email, internal note, optional Ollama polish
+engine/messages.py     vendor email, internal note, optional OpenRouter polish
 engine/store.py        SQLite append-only audit log
 scripts/make_samples.py  demo data generator
 samples/               6 scenario JSONs + docs/*.pdf

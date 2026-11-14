@@ -80,6 +80,14 @@ Stored as JSON. Sample files wrap it as `{"title", "expected", "submission"}`.
 | `doc_type` | enum | `gst_certificate` · `pan_card` · `cancelled_cheque` · `unknown` |
 | `text` | str | Raw text extracted by pypdf |
 | `fields` | dict | Extracted values, depending on `doc_type`, see below |
+| `warnings` | list[str] | Intake problems such as corrupt/encrypted PDFs, size/page limits, or no selectable text; warnings never count as verification evidence |
+| `page_count` | int or null | Page count when the PDF could be safely opened |
+| `page_texts` | list[str] | Selectable text by page, kept in memory to verify AI page citations; not persisted as a second transcript |
+| `ai_review` | object or null | Optional OpenRouter classification, extracted fields, page evidence, model/version and advisory score; visual-only extraction is marked for human review |
+| `sha256` | str | SHA-256 of the exact uploaded file bytes; used to detect byte-identical files renamed before upload |
+| `file_size` | int | Uploaded byte count |
+| `analyst_review` | object or null | Accepted type/fields, original type/fields, reviewer, timestamp, reason, and confirm/correct action; never replaces `ai_review` |
+| `autofill_fields` | list[object] | Source document, extracted field/value, final submitted value, text/OCR source, and cited page/quote for form fields suggested during upload |
 
 **Extracted `fields` per type:**
 
@@ -147,7 +155,7 @@ Stored as JSON. Sample files wrap it as `{"title", "expected", "submission"}`.
 | `subject` | str | Depends on status (see `05_RULES_SPEC.md` §7) |
 | `body` | str | Plain text |
 | `asks` | list[str] | `vendor_ask` of every failed check that has a non-empty ask, in pipeline order |
-| `polished_by` | str | `template` or `ollama:<model>` |
+| `polished_by` | str | `template` or `openrouter:<model>` |
 
 `InternalNote` is a plain string: decision line + headline + `[CHECK_ID] internal_note` for every failed or warned check that has a note.
 
@@ -170,11 +178,13 @@ Every pipeline execution = one row. **Never updated, only inserted** (audit trai
 | `headline` | TEXT | |
 | `duration_ms` | REAL | Pipeline compute time (excluding demo pacing) |
 | `submission` | TEXT (JSON) | Normalised submission |
-| `documents` | TEXT (JSON) | List of `{filename, doc_type, fields}` |
+| `documents` | TEXT (JSON) | JSON records include filename, doc type, fields, warnings, page count, file hash/size, optional AI review, and optional analyst review |
 | `results` | TEXT (JSON) | List of CheckResult dicts |
 | `decision` | TEXT (JSON) | Decision dict |
 | `email` | TEXT (JSON) | VendorEmail dict |
 | `internal_note` | TEXT | |
+
+`analyst_reviews` is a separate append-only table linked to `run_id`. Each event stores reviewer, timestamp, reason, accepted document values, rerun checks, decision, and message. Hydrated reads expose the original automated decision alongside the latest analyst-reviewed result; the original `runs` row and its submission version are not overwritten.
 
 **Queries needed:**
 - `latest(ref)`: newest version for a ref (to detect resubmission and supply `previous`)
@@ -231,7 +241,7 @@ vendorguard/
 │   ├── validators.py          # PAN/GSTIN/IFSC/name helpers + reference data
 │   ├── documents.py           # PDF → ParsedDoc
 │   ├── pipeline.py            # 5 stages + decide()
-│   ├── messages.py            # vendor email + internal note + optional Ollama polish
+│   ├── messages.py            # vendor email + internal note + optional OpenRouter polish
 │   └── store.py               # SQLite audit trail
 ├── scripts/make_samples.py    # generates samples/ + data/vendor_master.csv
 ├── samples/                   # 6 scenario JSONs + docs/*.pdf (17 PDFs)

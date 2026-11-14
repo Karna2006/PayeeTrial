@@ -14,6 +14,7 @@ import streamlit as st
 
 from engine import pipeline, store
 from engine import validators as V
+from engine import autofill
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLES = ROOT / "samples"
@@ -30,11 +31,47 @@ FIELD_PATHS = [
     "contact.name", "contact.email", "contact.phone", "website",
     "bank.account_holder", "bank.account_number", "bank.ifsc", "bank.bank_name",
 ]
+REQUIRED_FORM_FIELDS = [
+    ("legal_name", "Legal name"), ("entity_type", "Entity type"), ("pan", "PAN"), ("gstin", "GSTIN"),
+    ("address.line1", "Address line 1"), ("address.city", "City"), ("address.state", "State"),
+    ("address.pincode", "PIN code"), ("contact.name", "Contact name"),
+    ("contact.email", "Email"), ("contact.phone", "Phone"),
+    ("bank.account_holder", "Account holder name"), ("bank.account_number", "Account number"),
+    ("bank.ifsc", "IFSC"), ("bank.bank_name", "Bank name"),
+]
+DOCUMENT_SLOTS = [
+    ("gst_certificate", "GST registration certificate"),
+    ("pan_card", "PAN card"),
+    ("cancelled_cheque", "Cancelled cheque"),
+]
 MANUAL_REF_START = 200  # manual refs start at 201, clear of the demo scenarios (101-106)
 
 
 def fkey(path: str) -> str:
     return f"f_{path}"
+
+
+def missing_required_fields(values) -> list[str]:
+    """Let the UI block an empty run while leaving invalid-but-present values to the rules."""
+    missing = [label for path, label in REQUIRED_FORM_FIELDS if not str(values.get(fkey(path)) or "").strip()]
+    if values.get(fkey("entity_type")) == "Proprietorship" and not str(values.get(fkey("proprietor_name")) or "").strip():
+        missing.append("Proprietor's full name")
+    return missing
+
+
+def attached_sample_slots(names: list[str]) -> dict[str, list[str]]:
+    """Map synthetic sample names to their form slots; the engine still classifies by PDF content."""
+    slots: dict[str, list[str]] = {slot: [] for slot, _ in DOCUMENT_SLOTS}
+    hints = {"gst_certificate": "gst", "pan_card": "pan", "cancelled_cheque": "cheque"}
+    for name in names:
+        if not (SAMPLE_DOCS / name).is_file():
+            continue
+        lowered = name.lower()
+        for slot, hint in hints.items():
+            if hint in lowered:
+                slots[slot].append(name)
+                break
+    return slots
 
 
 def init() -> None:
@@ -48,9 +85,14 @@ def init() -> None:
         ss.setdefault(fkey(path), "")
     ss.setdefault("page", PAGES[0])
     ss.setdefault("ui_pacing", True)
-    ss.setdefault("ui_polish", False)
+    ss.setdefault("ui_ai_review", False)
+    ss.setdefault("ui_ai_polish", False)
     ss.setdefault("ui_confirm_reset", False)
     ss.setdefault("ui_attached", [])
+    ss.setdefault("review_pdf_bytes", {})
+    ss.setdefault("autofill_review_cache", {})
+    ss.setdefault("autofill_upload_signature", None)
+    ss.setdefault("autofill_report", None)
     ss.setdefault("ui_upload_nonce", 0)
     if "ui_ref" not in ss:
         ss["ui_ref"] = new_ref()
@@ -89,6 +131,25 @@ def fill_form(sub: dict, ref: str, attached: list[str]) -> None:
     ss["ui_attached"] = list(attached)
     ss["ui_upload_nonce"] += 1  # a new key empties the file uploader
     ss.pop("last_run", None)
+    ss["autofill_review_cache"] = {}
+    ss["autofill_upload_signature"] = None
+    ss["autofill_report"] = None
+    ss.pop("autofill_pending", None)
+
+
+def apply_pending_autofill() -> None:
+    """Apply queued suggestions before the form widgets are created on the next rerun."""
+    ss = st.session_state
+    suggestions = ss.pop("autofill_pending", None)
+    if suggestions is None:
+        return
+    errors = ss.pop("autofill_pending_errors", [])
+    current = {path: str(ss.get(fkey(path)) or "") for path in FIELD_PATHS}
+    updated, audit = autofill.apply_suggestions(current, suggestions)
+    for path, value in updated.items():
+        if path in FIELD_PATHS:
+            ss[fkey(path)] = value
+    ss["autofill_report"] = {"audit": audit, "suggestion_count": len(suggestions), "errors": errors}
 
 
 def build_submission(uploaded_names: list[str]) -> dict:
@@ -108,8 +169,10 @@ def build_submission(uploaded_names: list[str]) -> dict:
 
 
 # ----------------------------------------------------------- callbacks ----
-def cb_load_scenario() -> None:
-    sc = scenarios()[st.session_state["ui_scenario"]]
+def cb_load_scenario(slug: str | None = None) -> None:
+    slug = slug or st.session_state["ui_scenario"]
+    st.session_state["ui_scenario"] = slug
+    sc = scenarios()[slug]
     sub = sc["submission"]
     fill_form(sub, sub["submission_ref"], sub.get("documents", []))
 
@@ -120,6 +183,11 @@ def cb_new_blank() -> None:
 
 def cb_clear_attached() -> None:
     st.session_state["ui_attached"] = []
+
+
+def cb_form_changed() -> None:
+    """Remove a stale result as soon as the user edits the submission."""
+    st.session_state.pop("last_run", None)
 
 
 def cb_goto(page: str, run_id: int | None = None) -> None:
@@ -141,6 +209,10 @@ def cb_reset() -> None:
     ss = st.session_state
     ss.pop("last_run", None)
     ss.pop("selected_run", None)
+    ss.pop("review_pdf_bytes", None)
+    ss["autofill_report"] = None
+    ss["autofill_review_cache"] = {}
+    ss["autofill_upload_signature"] = None
     ss["ui_confirm_reset"] = False
     ss["ui_ref"] = new_ref() if not ss["ui_attached"] and not ss[fkey("legal_name")] else ss["ui_ref"]
     ss["ui_flash"] = "Demo data cleared"
@@ -165,4 +237,6 @@ def record_from_row(row: dict, stage_ms: dict[str, float] | None = None) -> dict
             "created_at": row["created_at"], "duration_ms": row["duration_ms"],
             "submission": row["submission"], "docs": row["documents"] or [], "results": results,
             "stages": stages, "decision": row["decision"], "email": row["email"],
-            "note": row["internal_note"] or "", "previous": previous_of(row)}
+            "note": row["internal_note"] or "", "previous": previous_of(row),
+            "review_history": row.get("review_history") or [],
+            "original_decision": row.get("original_decision")}

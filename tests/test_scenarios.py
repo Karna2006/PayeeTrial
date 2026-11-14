@@ -95,7 +95,9 @@ def test_a9_gstin_checksum_matches_stdnum(master):
 @pytest.mark.parametrize("pdf", sorted(p.name for p in (SAMPLES / "docs").glob("*.pdf")))
 def test_a10_classified_by_content(pdf):
     doc = documents.parse(pdf, (SAMPLES / "docs" / pdf).read_bytes())
-    if pdf == "vertex_cancelled_cheque.pdf":
+    if pdf == "synthetic_scan_pan.pdf":
+        expected = "unknown"  # its visible text is intentionally image-only
+    elif pdf == "vertex_cancelled_cheque.pdf":
         expected = "pan_card"  # the filename lies
     elif "gst_certificate" in pdf:
         expected = "gst_certificate"
@@ -106,8 +108,8 @@ def test_a10_classified_by_content(pdf):
     assert doc.doc_type == expected
 
 
-def test_a10b_seventeen_sample_pdfs():
-    assert len(list((SAMPLES / "docs").glob("*.pdf"))) == 17
+def test_a10b_eighteen_synthetic_pdfs():
+    assert len(list((SAMPLES / "docs").glob("*.pdf"))) == 18
 
 
 def test_a11_name_normalisation():

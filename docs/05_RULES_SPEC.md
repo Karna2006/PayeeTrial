@@ -63,6 +63,7 @@ Required document types: `gst_certificate`, `pan_card`, `cancelled_cheque`. Clas
 | ID | Check | Logic | Outcome | Severity | Vendor ask |
 |---|---|---|---|---|---|
 | `DOC_UNKNOWN` | Recognise '{filename}' | One result per upload classified `unknown` | ⚠️ | warn | (none) |
+| `DOC_AI_REVIEW` | Review AI extraction for '{filename}' | Optional OpenRouter review: local PDF text absent, provider unavailable for an image-only PDF, local and AI classifications disagree, or required local/AI fields differ or are missing | ❌ | review | (none) | "Confirm document type and extracted values against the original PDF before approving. AI document scoring is advisory." |
 | `DOC_GST_CERTIFICATE` / `DOC_PAN_CARD` / `DOC_CANCELLED_CHEQUE` | {Type} provided | At least one upload classified as that type. Detail on failure lists what *was* received, e.g. "(GST Registration Certificate, PAN Card, PAN Card)" | ❌ / ✅ | blocker | "Please upload your {type}." + if some type was uploaded twice: " We received {type} twice; one of the uploads may have been the wrong file." |
 | `GST_DOC_MATCH` ⭐ | GST certificate matches form | Problems list: (a) cert gstin ≠ form gstin; (b) name_similarity(cert legal_name, form legal_name) < 90; (c) cert status ∈ {cancelled, suspended, inactive}. Any problem → ❌ | ❌ / ✅ | blocker | "The GST certificate you uploaded doesn't match your submission ({problems joined by '; '}). Please upload the certificate for {legal_name} with GSTIN {gstin}." |
 | `PAN_DOC_MATCH` | PAN card matches form | card pan ≠ form pan → ❌. If card pan == gstin[2:12], add the typo hint | ❌ / ✅ | blocker | "Your PAN card shows {card} but the form says {pan}.{ hint} Please correct the PAN on the form." hint = " It matches the PAN inside your GSTIN, so the form entry is likely a typo." |
@@ -131,7 +132,7 @@ risk_level: <20 Low · 20–49 Medium · ≥50 High
 
 Sign-off: "Thanks,\nProcurement Team". Greeting: "Hi {contact.name},".
 
-**Optional LLM polish (Ollama):** only for emails with asks. Prompt: rewrite warm/clear/concise, keep every numbered request with all IDs, numbers and names exactly; no new requests or promises; return only the body. Temperature 0.2. **Guardrail:** every token matching `\b[A-Z0-9]{8,}\b` in the asks must appear in the rewrite; otherwise keep the template. Timeout 45 s → keep the template.
+**Optional LLM polish (same OpenRouter model):** rewrites email tone only and remains an unapproved suggestion. Preserve every exact request and identifier; add no requests or promises. If a request or identifier is changed, the suggestion is discarded and the deterministic template remains the message of record.
 
 ---
 
@@ -167,7 +168,13 @@ Verified identical to `python-stdnum`'s `stdnum.in_.gstin.is_valid` on all sampl
 1. intake: REQ_FIELDS, EMAIL, PHONE, PINCODE
 2. identity: PAN_FORMAT, PAN_TYPE, PAN_INITIAL, GSTIN_VALID, GSTIN_PAN_LINK, GSTIN_STATE
 3. bank: IFSC, IFSC_BANK, ACCOUNT_NO, ACCOUNT_NAME
-4. documents: DOC_UNKNOWN*, DOC_GST_CERTIFICATE, DOC_PAN_CARD, DOC_CANCELLED_CHEQUE, GST_DOC_MATCH, PAN_DOC_MATCH, CHEQUE_MATCH
-5. fraud: DUP_VENDOR, DUP_BANK, RESUB_DIFF, RESUB_BANK_CHANGE, RESUB_CONTACT_CHANGE
+4. documents: DOC_UNKNOWN*, DOC_AI_REVIEW (optional), DOC_ANALYST_REVIEW (after confirmation), DOC_DUPLICATE_FILE (when identical content is uploaded more than once), DOC_GST_CERTIFICATE, DOC_PAN_CARD, DOC_CANCELLED_CHEQUE, GST_DOC_MATCH, PAN_DOC_MATCH, CHEQUE_MATCH
+5. fraud: DUP_VENDOR, DUP_BANK, DUP_NAME_REVIEW, RESUB_DIFF, RESUB_BANK_CHANGE, RESUB_CONTACT_CHANGE
 
-Total: 26 distinct checks.
+Total: 27 core checks. Conditional findings include DOC_AI_REVIEW, DOC_DUPLICATE_FILE, and DOC_ANALYST_REVIEW.
+
+`DOC_DUPLICATE_FILE` compares SHA-256 hashes of uploaded bytes, so a byte-identical PDF remains detectable after a filename change. It is a warning and includes internal filenames only.
+
+`DUP_NAME_REVIEW` compares normalized legal names with the vendor master. A similarity of at least 90% for sufficiently distinctive names routes the submission to Compliance review. It is never a rejection by itself and does not expose another vendor's record to the submitter.
+
+An analyst can confirm or correct uncertain document candidates only after checking the original PDF. The system reruns deterministic checks using accepted values, preserves the AI output, and appends a reviewer, timestamp, reason, original/accepted values, and resulting decision to a separate review-event table. A review event does not increment the vendor submission version. In this single-user demo the reviewer name is self-reported, not authenticated.

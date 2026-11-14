@@ -239,4 +239,5 @@ with open(DATA / "vendor_master.csv", "w", newline="") as f:
     for r in master:
         w.writerow([*r, "Active"])
 
-print(f"Wrote {len(scenarios)} scenarios, {len(list(DOCS.glob('*.pdf')))} PDFs, {len(master)} vendors")
+scenario_pdf_count = len({filename for _, _, _, _, filenames in scenarios for filename in filenames})
+print(f"Wrote {len(scenarios)} scenarios, {scenario_pdf_count} scenario PDFs, {len(master)} vendors")

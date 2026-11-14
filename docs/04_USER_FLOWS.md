@@ -78,7 +78,7 @@ Four flows cover everything. Each step names the screen, what the user does, and
 | Control | Default | Effect |
 |---|---|---|
 | Demo pacing | ON | 0.6 s pause after each stage so viewers can follow |
-| Polish email with local LLM (Ollama) | OFF | Shows "🟢 Ollama detected" / "⚪ Ollama not running: template only"; disabled when not detected |
+| Polish email with the same model | OFF | Available when the OpenRouter API key is configured; suggestion remains separate from the deterministic email |
 | Reset demo data | | Flow E |
 
 ---
@@ -89,7 +89,7 @@ Four flows cover everything. Each step names the screen, what the user does, and
 |---|---|
 | Run clicked with no documents | Pipeline still runs; the document checks fail as blockers (that's the correct behaviour, not a crash) |
 | Uploaded file isn't a readable PDF | `extract_text` returns "" → classified `unknown` → warning row "Couldn't recognise 'x.pdf'" |
-| Required field blank | Pipeline runs; `REQ_FIELDS` fails listing what's missing |
+| Required field blank or document slot empty | Run button stays disabled and the page lists what needs to be completed |
 | Dashboard with zero runs | Friendly empty state, no charts |
-| Ollama enabled but times out | Silently keep the template email; `polished_by = template` |
+| OpenRouter is unavailable or rate-limited | Show the provider error and keep the template email; `polished_by = template` |
 | Same scenario loaded twice | Second run becomes v2 of the same ref (correct; to re-demo from scratch, reset first) |

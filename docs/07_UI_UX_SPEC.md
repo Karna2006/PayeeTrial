@@ -12,12 +12,13 @@ The UI is graded ("we expect an intuitive, well-designed interface with a **live
 
 | Token | Hex | Use |
 |---|---|---|
-| `accent` | `#4F46E5` (indigo-600) | primary buttons, links, active nav |
-| `text` | `#111827` | body |
-| `muted` | `#6B7280` | secondary text, captions |
-| `bg` | `#FFFFFF` | page |
-| `surface` | `#F6F7F9` | cards, sidebar |
-| `border` | `#E5E7EB` | card borders, dividers |
+| `accent` | `#176B5B` (deep botanical green) | primary buttons, links, active nav |
+| `text` | `#182421` | body |
+| `muted` | `#64736D` | secondary text, captions |
+| `bg` | `#F4F6F3` | page |
+| `surface` | `#FFFFFF` | cards |
+| `sidebar` | `#172B29` | navigation rail |
+| `border` | `#E1E7E2` | card borders, dividers |
 | `approved` | `#059669` text on `#ECFDF5` bg | APPROVED pill, pass |
 | `pending` | `#B45309` text on `#FFFBEB` bg | PENDING pill, warn |
 | `rejected` | `#B91C1C` text on `#FEF2F2` bg | REJECTED pill, fail |
@@ -32,10 +33,10 @@ The UI is graded ("we expect an intuitive, well-designed interface with a **live
 ```toml
 [theme]
 base = "light"
-primaryColor = "#4F46E5"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F6F7F9"
-textColor = "#111827"
+primaryColor = "#176B5B"
+backgroundColor = "#F4F6F3"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#182421"
 font = "sans serif"
 
 [server]
@@ -51,13 +52,13 @@ headless = true
 
 ## 2. Layout & navigation
 
-- `st.set_page_config(page_title="PayeeTrail", page_icon="🛡️", layout="wide")`
+- `st.set_page_config(page_title="PayeeTrail", layout="wide")`
 - **Left sidebar** (fixed):
-  - Logo line: **🛡️ PayeeTrail** + caption "Trust the payee. Trace every change."
+  - Logo line: **PayeeTrail** + caption "Trust the payee. Trace every change."
   - Nav (`st.radio`, label hidden): **Submit & Verify** · **Dashboard** · **Run detail** · **Outbox**
   - Divider
-  - **Settings** expander: Demo pacing (toggle, ON) · Polish email with local LLM (toggle, OFF, disabled if Ollama not detected; status caption) · Reset demo data (confirm checkbox + button)
-  - Footer caption: "Rules engine v1 · 26 checks · 100% offline"
+  - **Settings** expander: Demo pacing (toggle, ON) · optional AI document review and email polish with the same OpenRouter model (disabled until key configured) · data-use caption · Reset demo data (confirm checkbox + button)
+  - Footer caption: "Rules engine v1 | 27 core checks | optional AI uses one model"
 - **Main area:** max readable width; use `st.columns` for side-by-side.
 - Navigation between pages via `st.session_state["page"]` (so buttons like "Open run" can switch pages).
 
@@ -68,10 +69,10 @@ headless = true
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Submit & Verify                                                        │
-│ Run a vendor submission through 26 checks across 5 stages.             │
+│ Run a vendor submission through 27 checks across 5 stages.             │
 │                                                                        │
-│ [ Load demo scenario ▼  01 · Happy path: clean submission ] [ Load ]   │
-│   caption: expected outcome: APPROVED  (shown after selecting)         │
+  [Six demo case cards: story | expected result | Load case] [New blank form]
+  Each case card shows its story and expected outcome before it is loaded.
 │                                                                        │
 │ ↻ Resubmission detected: will be v2 of VS-2026-102 (v1: PENDING ·    │  ← info banner, only if ref exists
 │   Awaiting vendor)                                                     │
@@ -92,16 +93,19 @@ headless = true
 ├────────────────────────────────────────────────────────────────────────┤
 │ DECISION                                                               │
 │ ┌──────────────────────────────────────────────────────────────────┐   │
-│ │ [REJECTED]  Closed: rejected            Risk ███████████ 100 High │   │
+  [REJECTED] Closed: rejected | Rule signal score 100 | High
 │ │ Account held by 'Kaveri Traders', an unrelated party to…         │   │
-│ │ 🚩 Fraud signals: ACCOUNT_NAME · DUP_BANK                        │   │
+  Fraud signals: ACCOUNT_NAME | DUP_BANK
 │ │ 18 passed · 2 failed · 2 warnings · 9 ms · run #7 · v1           │   │
 │ └──────────────────────────────────────────────────────────────────┘   │
-│ [📧 Vendor email] [📝 Internal note] [🔀 Changes vs previous] [🧾 Raw] │
+│ [Vendor email] [Internal note] [Changes vs previous] [Raw] │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Form spec (`st.form("submission")`)
+### Form spec (standalone widgets so required-state updates immediately)
+
+Use a two-column layout for company, address, contact, and bank fields. Keep the six synthetic scenario cards above the form, with a collapsed list selector as an alternate route.
+Show a persistent demo disclosure: synthetic data only, local run storage, and no external bank ownership or government registry checks.
 | Section | Fields (widget) |
 |---|---|
 | Company | Legal name (text) · Trade name (text) · Entity type (selectbox of 5) · Proprietor's full name (text, **only shown if Proprietorship**; because widgets inside st.form don't rerun, put entity_type *outside* the form or show the field always with help text "Only for proprietorships") · PAN (text) · GSTIN (text) |
@@ -122,26 +126,28 @@ Field keys in `st.session_state` use dot paths, e.g. `f_address.state`, so "Load
 
 ### Decision card spec
 - Left: status pill (colour by status) + queue text.
-- Right: risk bar (`st.progress(score/100)`) + "{score} · {level}".
+- Right: rule signal bar (`st.progress(score/100)`); note that it is not a probability + "{score} · {level}".
 - Headline in 18px.
-- Fraud signal row (only if any): 🚩 + check_ids as small red tags.
+- Fraud signal row (only if any): check_ids as small red tags.
 - Footer: counts · duration · run id · version.
 
 ### Tabs under the card
-1. **📧 Vendor email**: "To: …", "Subject: …" (bold), body in a bordered box (`st.text_area` disabled or `st.code(language=None)` for copy); caption "Generated by: template / ollama:qwen2.5".
-2. **📝 Internal note**: `st.code` block; caption "Visible to procurement/compliance only."
-3. **🔀 Changes vs previous**: only if version > 1. Table: Field · Previous · Now · Requested? (✅ requested / ⚠️ unrequested), per the mapping in Rules Spec §5.
-4. **🧾 Raw record**: `st.json` of `{submission, documents, results, decision}`.
+1. **Vendor email**: "To: …", "Subject: …" (bold), body in a bordered box (`st.text_area` disabled or `st.code(language=None)` for copy); caption "Generated by: template / OpenRouter model".
+2. **Internal note**: `st.code` block; caption "Visible to procurement/compliance only."
+3. **Changes vs previous**: only if version > 1. Table: Field · Previous · Now · Requested? (✅ requested / ⚠️ unrequested), per the mapping in Rules Spec §5.
+4. **Raw record**: `st.json` of `{submission, documents, results, decision}`.
 
 ---
 
 ## 4. Page: Dashboard
 
+- Place the pending work queue immediately after KPI tiles and before charts so the next analyst action is easy to find. Label the 0-100 metric as a weighted rule signal score, not a calibrated fraud probability.
+
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
 │ Dashboard                                         [ ↻ Refresh ]        │
 │ ┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐          │
-│ │Runs  8 ││Approved││Pending ││Rejected││Avg risk││Avg time│          │
+│ │Runs  8 ││Approved││Pending ││Rejected││Avg rule score││Avg time│          │
 │ │        ││ 2 (25%)││   4    ││   2    ││   38   ││ 11 ms  │          │
 │ └────────┘└────────┘└────────┘└────────┘└────────┘└────────┘          │
 │ ┌ Status split (bar) ──────────┐┌ Top failing checks (horiz bar) ──┐  │
@@ -159,7 +165,7 @@ Field keys in `st.session_state` use dot paths, e.g. `f_address.state`, so "Load
 - Status split: `st.bar_chart` with colours by status (pass `color` per series). Fall back to a simple table if colouring is fiddly.
 - Top failing checks: count failed results by `check_id` across **all runs**, top 8, horizontal bar.
 - Work queue: group by queue with subheaders; each row has **Open** (→ Run detail) and **Resubmit** (→ Submit page prefilled with that version's submission, attached docs cleared, banner shown).
-- History: `st.dataframe` with column config: status as coloured text, risk as `ProgressColumn` (0–100).
+- History: `st.dataframe` with column config: status as coloured text, rule score as `ProgressColumn` (0–100).
 - **Empty state:** "No runs yet. Go to Submit & Verify and load a demo scenario." + button.
 
 ---
@@ -168,7 +174,7 @@ Field keys in `st.session_state` use dot paths, e.g. `f_address.state`, so "Load
 
 - Selector at top: "Run #…" (selectbox of all runs, label "#{id} · {ref} v{version} · {vendor} · {status}"), defaulting to `session_state.selected_run`.
 - Decision card (same component).
-- **Version history for this ref**: small table of all versions (v, time, status, queue, risk), each with an Open button.
+- **Version history for this ref**: small table of all versions (v, time, status, queue, rule score), each with an Open button.
 - Columns: left = checks grouped by stage (static, same row component as the live view, all expanded for failed stages); right = Documents (each: filename, detected type, extracted fields as key/value), Submission (key/value table).
 - Tabs: Vendor email · Internal note · Changes vs previous · Raw JSON.
 
@@ -202,7 +208,7 @@ Field keys in `st.session_state` use dot paths, e.g. `f_address.state`, so "Load
 
 | Where | Text |
 |---|---|
-| Submit page subtitle | "Run a vendor submission through 26 checks across 5 stages." |
+| Submit page subtitle | "Run a vendor submission through 27 checks across 5 stages." |
 | Run button | "▶ Run verification" |
 | Running toast | "Verifying {legal_name}…" |
 | Saved toast | "Saved as run #{id} (v{version})" |

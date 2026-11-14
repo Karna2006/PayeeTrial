@@ -117,27 +117,6 @@ def test_c9b_rejection_with_no_safe_ask_stays_generic(run_sample):
     assert "V-1042" not in email["body"] and "Kaveri" not in email["body"]
 
 
-def test_c10_polish_falls_back_without_ollama(run_sample, monkeypatch):
-    monkeypatch.setattr(messages, "ollama_available", lambda timeout=0.6: False)
-    out = run_sample(2)
-    email = messages.vendor_email(out["submission"], out["decision"], out["results"])
-    assert messages.polish_with_llm(email) == email
-
-
-def test_c10b_polish_guardrail_rejects_dropped_ids(run_sample, monkeypatch):
-    import io
-    import json
-    out = run_sample(2)
-    email = messages.vendor_email(out["submission"], out["decision"], out["results"])
-    monkeypatch.setattr(messages, "ollama_available", lambda timeout=0.6: True)
-    monkeypatch.setattr(messages.urllib.request, "urlopen",
-                        lambda *a, **k: io.BytesIO(json.dumps({"response": "Please fix your PAN."}).encode()))
-    assert messages.polish_with_llm(email)["polished_by"] == "template"
-    monkeypatch.setattr(messages.urllib.request, "urlopen",
-                        lambda *a, **k: io.BytesIO(json.dumps({"response": "Hello! " + email["body"]}).encode()))
-    assert messages.polish_with_llm(email)["polished_by"].startswith("ollama:")
-
-
 @pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6])
 def test_c12_deterministic(run_sample, n):
     runs = [run_sample(n) for _ in range(3)]

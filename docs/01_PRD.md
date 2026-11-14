@@ -9,6 +9,8 @@
 
 **PayeeTrail takes a vendor's onboarding submission (form + documents), cross-checks every field and document against each other and against the existing vendor list, and returns Approved / Pending / Rejected, with the reasoning visible and a ready-to-send message telling the vendor exactly what to fix.**
 
+> **Scope amendment (2026-11):** The owner requested mandatory-field gating, scanned-PDF handling, a UI refresh, production-readiness planning, and optional OpenRouter document review plus email polish using one model. AI classification, extraction and score are advisory; visual-only results and disagreements require human review. The core app remains usable offline without a key. The free endpoint is limited to synthetic demo data because of its data-use terms.
+
 ---
 
 ## 2. The problem (in the buyer's words)
@@ -55,7 +57,7 @@ Full rule definitions: `05_RULES_SPEC.md`.
 ### F3 · Decision engine with explainable output
 - Status: **APPROVED / PENDING / REJECTED**
 - Queue: *Ready for vendor master · Awaiting vendor · Compliance review · Procurement review · Closed: rejected*
-- Risk score 0–100 plus level (Low / Medium / High)
+- Weighted rule signal score 0–100 plus level (Low / Medium / High); this is not a calibrated fraud probability or external verification
 - A one-line headline reason, plus every failed or warned check with its evidence
 
 ### F4 · Communication back to the vendor, plus a resubmission loop
@@ -64,7 +66,7 @@ Full rule definitions: `05_RULES_SPEC.md`.
 - **Resubmission**: the same submission reference becomes version N+1. The diff against the previous version is shown, and behaviour across versions is checked (the bank-swap fraud pattern).
 
 ### F5 · Dashboard and audit trail
-- KPI tiles (total runs, approval rate, pending, rejected, average risk, average processing time)
+- KPI tiles (total runs, approval rate, pending, rejected, average rule score, average processing time)
 - Status split and top failing checks (charts)
 - Work queue (everything pending, grouped by queue)
 - Full run history; click any run to see its complete record (submission, documents, check results, decision, email, note)
@@ -80,16 +82,16 @@ These are deliberate. When asked "why not X?" in the interview, the answer is: *
 |---|---|---|
 | ❌ Login, auth, user roles | Single-user demo; adds nothing to the decision logic | SSO plus role-based access (analyst vs compliance) |
 | ❌ A real vendor-facing portal or magic links | The interviewer plays the vendor via the same form | Tokenised resubmission link that pre-fills from the last version |
-| ❌ Actually sending email | Risky in a demo; needs a domain or SMTP | SMTP / Resend / Gmail API; the outbox is already the queue |
-| ❌ OCR of scanned / image documents | Digital PDFs prove the logic; OCR adds a day of tuning | Tesseract / PaddleOCR before the same parser |
+| ❌ Actually sending email | Risky in a demo; needs a domain and delivery controls | The Outbox already stores generated emails; add a mail service later if needed |
+| ✅ AI-assisted scanned-PDF review | The OpenRouter vision model can classify and extract visible evidence when enabled; no separate OCR package is installed | Keep provider behind an opt-in adapter; visual-only extractions remain in Compliance review until confirmed |
 | ❌ Live government API checks (GSTN portal, NSDL PAN, penny-drop) | Paid / gated APIs; not open-source | Plug-in adapters at the same check points (designed as swap-ins) |
 | ❌ Branch-level IFSC lookup | Full dataset not needed for the demo | Razorpay's open IFSC dataset (MIT) as an offline lookup |
 | ❌ Sanctions / PEP screening | Out of scope for v1 | OFAC SDN list (free CSV) as a stage-5 check |
 | ❌ International vendors (VAT, IBAN, SWIFT) | India-first keeps the rules deep, not wide | Country-aware rule packs; python-stdnum already supports IBAN and VAT |
-| ❌ ML / LLM making the decision | Decisions must be deterministic and auditable | LLM stays assistive (message tone, extracting from unusual documents) |
+| ❌ ML / LLM making the decision | Decisions must be rules-based and explainable | LLM returns document evidence and a separate advisory score; it cannot approve/reject |
 | ❌ Editing vendor master from the UI, ERP integration | Not needed to show the process | Write approved vendors to SAP / Tally / NetSuite via API |
 | ❌ Dark mode, mobile layout, i18n, notifications | Cosmetic | Later |
-| ❌ Multi-tenant, scaling, async workers, Docker | Single-machine demo | Queue plus workers if volume demands it |
+| ❌ Multi-tenant production service and async workers | Single-machine assignment demo; real company data requires security and operational controls | Follow the staged modular-monolith path in `11_PRODUCTION_READINESS.md` |
 
 ---
 
@@ -97,22 +99,22 @@ These are deliberate. When asked "why not X?" in the interview, the answer is: *
 
 1. All **6 demo scenarios** produce their expected decision every time (see `06_TEST_SCENARIOS.md`).
 2. A run completes in **under 3 seconds** (excluding the optional demo pacing).
-3. The live run view shows all 5 stages with per-check results; the decision card shows status, queue, risk, headline and reasons.
+3. The live run view shows all 5 stages with per-check results; the decision card shows status, queue, weighted rule signal score, headline and reasons.
 4. Every non-approved run produces a vendor email whose asks are **specific** (they name the exact field, value and fix).
 5. The resubmission of scenario 2 (as scenario 5) is detected as version 2 and routed to Compliance review.
 6. The dashboard reflects every run and survives an app restart (SQLite).
-7. **Zero paid services.** It runs fully offline on a laptop; it's deployable to Streamlit Community Cloud from a public GitHub repo.
+7. **The core runs at zero API cost and offline.** Optional OpenRouter review and email polish require a user-provided key and network; the video uses synthetic documents. The app is deployable to Streamlit Community Cloud from a public GitHub repo.
 8. A 5-minute demo video is recorded: happy path plus at least 2 edge cases.
 
 ---
 
 ## 7. Design principles (say these in the interview)
 
-1. **Rules decide, AI assists.** A checksum is right or wrong; it should never be left to a model's opinion. The LLM is used only where language matters (vendor message tone), behind a guardrail that falls back to the template.
+1. **Rules decide, AI assists.** A checksum is right or wrong; it should never be left to a model's opinion. OpenRouter may classify/extract document evidence and score readability/completeness; the final risk decision remains in the rules engine.
 2. **Cross-reference beats field validation.** Most tools check that each field is well-formed. The fraud lives *between* fields: the GSTIN vs the PAN, the account holder vs the legal name, version 1 vs version 2.
 3. **Severity drives the outcome.** Not every failure is equal: typo → ask the vendor; inconsistency → ask with a precise hint; fraud signal → reject or escalate to a human.
 4. **Never tip off a fraudster.** The internal note says "this account belongs to vendor V-1042"; the vendor email never does.
-5. **Fix only what's broken.** The vendor gets asked only for failing items; everything verified is kept.
+5. **Fix only what's broken.** The vendor gets asked only for failing items; every item that passed the configured checks is kept.
 6. **Everything is auditable.** Every run, every version, every check is stored.
 
 ---

@@ -15,6 +15,7 @@ Small sequential phases. **Each phase ends with something that runs, and a git c
 | 6 · Polish | 45 min | theme, CSS, microcopy, empty states, 1280px check | Polish checklist in `07_UI_UX_SPEC.md` §9 all ticked |
 | 7 · Deploy | 30 min | GitHub public repo + Streamlit Cloud app | Live URL runs all 6 scenarios |
 | 8 · Demo prep + video | 1 h | Rehearse `10_DEMO_SCRIPT.md` twice; record ≤ 5 min | Video link + app link ready to email |
+| 9 · Owner-requested hardening | staged | Required-field gate, PDF intake guardrails, optional OpenRouter PDF review and advisory score, then API/security architecture | Text-layer values are grounded; image-only extraction and classifier disagreements route to Compliance review; production stages documented in production readiness plan |
 
 **Total ≈ 8.5 h.** Buffer: cut Phase 5's Outbox page first (the email is already visible on the Submit page), then Run detail's version-history table.
 
@@ -34,7 +35,7 @@ git add . && git commit -m "feat: reference engine + sample generator"
 
 ### Phase 1: Data + engine verify
 - Run `python scripts/make_samples.py`.
-- Read `engine/pipeline.py` alongside `05_RULES_SPEC.md`; confirm all 26 check IDs exist with the specified severities.
+- Read `engine/pipeline.py` alongside `05_RULES_SPEC.md`; confirm all 27 core check IDs exist with the specified severities.
 - Add `requested_fields_map` (Rules Spec §5 table) to `engine/pipeline.py` as `REQUESTED_BY` plus a helper `classify_changes(prev_sub, sub, prev_results) -> list[{field, before, after, requested}]`. The UI diff tab needs it.
 
 ### Phase 2: Tests

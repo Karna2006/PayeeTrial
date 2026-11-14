@@ -15,7 +15,7 @@ def kpis(runs: list[dict]) -> dict:
     return {"total": total, "approved": count["APPROVED"], "pending": count["PENDING"],
             "rejected": count["REJECTED"],
             "approval_rate": round(100 * count["APPROVED"] / total) if total else 0,
-            "avg_risk": round(sum(r["risk_score"] or 0 for r in runs) / total) if total else 0,
+            "avg_rule_score": round(sum(r["risk_score"] or 0 for r in runs) / total) if total else 0,
             "avg_ms": round(sum(r["duration_ms"] or 0 for r in runs) / total, 1) if total else 0.0}
 
 
@@ -45,8 +45,8 @@ def history_frame(runs: list[dict], statuses: list[str] | None = None, search: s
     needle = search.strip().lower()
     rows = [{"#": r["run_id"], "Time": str(r["created_at"]).replace("T", " "), "Ref": r["submission_ref"],
              "v": r["version"], "Vendor": r["vendor_name"] or "(blank)", "Status": r["status"],
-             "Queue": r["queue"], "Risk": r["risk_score"], "Headline": r["headline"]}
+             "Queue": r["queue"], "Rule score": r["risk_score"], "Headline": r["headline"]}
             for r in runs
             if (not statuses or r["status"] in statuses)
             and (not needle or needle in f"{r['vendor_name']} {r['submission_ref']}".lower())]
-    return pd.DataFrame(rows, columns=["#", "Time", "Ref", "v", "Vendor", "Status", "Queue", "Risk", "Headline"])
+    return pd.DataFrame(rows, columns=["#", "Time", "Ref", "v", "Vendor", "Status", "Queue", "Rule score", "Headline"])

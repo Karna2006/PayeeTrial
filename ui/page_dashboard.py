@@ -20,7 +20,7 @@ def _kpis(runs: list[dict]) -> None:
                     delta_arrow="off", border=True)
     tiles[2].metric("Pending", k["pending"], border=True)
     tiles[3].metric("Rejected", k["rejected"], border=True)
-    tiles[4].metric("Avg risk", k["avg_risk"], border=True)
+    tiles[4].metric("Avg rule score", k["avg_rule_score"], help="Weighted rule findings, not a calibrated probability.", border=True)
     tiles[5].metric("Avg time", f"{k['avg_ms']:.0f} ms", border=True)
 
 
@@ -36,7 +36,8 @@ def _charts(runs: list[dict]) -> None:
         if top.empty:
             st.caption("No failed checks yet.")
         else:
-            st.bar_chart(top, x="check", y="failures", horizontal=True, height=260, color="#4F46E5",
+            st.bar_chart(top, x="check", y="failures", horizontal=True, height=260,
+                         color=C.STATUS_COLOR["REJECTED"],
                          sort="-failures", x_label="failed runs", y_label="")
 
 
@@ -54,7 +55,7 @@ def _work_queue(runs: list[dict]) -> None:
             c[0].markdown(f"`{r['submission_ref']}`")
             c[1].markdown(C.md_safe(r["vendor_name"] or "(blank)"))
             c[2].markdown(f"v{r['version']}")
-            c[3].markdown(f"risk {r['risk_score']}")
+            c[3].markdown(f"rule {r['risk_score']}")
             c[4].caption(C.md_safe(r["headline"]))
             c[5].button("Open", key=f"q_open_{r['run_id']}", on_click=state.cb_goto,
                         args=("Run detail", r["run_id"]), width="stretch")
@@ -70,7 +71,7 @@ def _history(runs: list[dict]) -> None:
     frame = metrics.history_frame(runs, statuses, search)
     frame["Status"] = frame["Status"].map(lambda s: f"{C.STATUS_ICON.get(s, '')} {s}")
     st.dataframe(frame, hide_index=True, width="stretch", column_config={
-        "Risk": st.column_config.ProgressColumn("Risk", min_value=0, max_value=100, format="%d"),
+        "Rule score": st.column_config.ProgressColumn("Rule score", min_value=0, max_value=100, format="%d"),
         "Headline": st.column_config.TextColumn("Headline", width="large")})
     shown = [r for r in runs if r["run_id"] in set(frame["#"])]
     if shown:
@@ -91,6 +92,6 @@ def render() -> None:
                   on_click=state.cb_goto, args=("Submit & Verify",))
         return
     _kpis(runs)
-    _charts(runs)
     _work_queue(runs)
+    _charts(runs)
     _history(runs)

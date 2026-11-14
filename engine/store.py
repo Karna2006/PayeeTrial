@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS runs (
     email         TEXT,
     internal_note TEXT
 );
+CREATE TABLE IF NOT EXISTS analyst_reviews (
+    event_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id        INTEGER NOT NULL REFERENCES runs(run_id),
+    created_at    TEXT NOT NULL,
+    reviewer      TEXT NOT NULL,
+    reason        TEXT NOT NULL,
+    payload       TEXT NOT NULL
+);
 """
 
 
@@ -35,7 +43,7 @@ def conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(DB_PATH, check_same_thread=False)
     c.row_factory = sqlite3.Row
-    c.execute(SCHEMA)
+    c.executescript(SCHEMA)
     return c
 
 
@@ -75,11 +83,42 @@ def get_run(run_id: int) -> dict | None:
 
 def reset():
     with conn() as c:
+        c.execute("DELETE FROM analyst_reviews")
         c.execute("DELETE FROM runs")
+
+
+def add_analyst_review(run_id: int, reviewer: str, reason: str, payload: dict) -> int:
+    """Append an analyst event without changing the vendor submission version row."""
+    created_at = payload.get("created_at") or datetime.now().isoformat(timespec="seconds")
+    with conn() as c:
+        cur = c.execute("INSERT INTO analyst_reviews (run_id, created_at, reviewer, reason, payload) VALUES (?,?,?,?,?)",
+                        (run_id, created_at, reviewer, reason, json.dumps(payload)))
+        return int(cur.lastrowid)
 
 
 def _hydrate(row: sqlite3.Row) -> dict:
     d = dict(row)
     for k in ("submission", "documents", "results", "decision", "email"):
         d[k] = json.loads(d[k]) if d.get(k) else None
+    with conn() as c:
+        events = c.execute("SELECT * FROM analyst_reviews WHERE run_id=? ORDER BY event_id", (d["run_id"],)).fetchall()
+    d["review_history"] = [{**dict(event), "payload": json.loads(event["payload"])} for event in events]
+    if events:
+        latest_event = d["review_history"][-1]
+        payload = latest_event["payload"]
+        d["original_status"] = d["status"]
+        d["original_queue"] = d["queue"]
+        d["original_risk_score"] = d["risk_score"]
+        d["original_decision"] = d["decision"]
+        d["original_documents"] = d["documents"]
+        d["original_results"] = d["results"]
+        d["status"] = payload["decision"]["status"]
+        d["queue"] = payload["decision"]["queue"]
+        d["risk_score"] = payload["decision"]["risk_score"]
+        d["headline"] = payload["decision"]["headline"]
+        d["decision"] = payload["decision"]
+        d["documents"] = payload["documents"]
+        d["results"] = payload["results"]
+        d["email"] = payload["email"]
+        d["internal_note"] = payload["internal_note"]
     return d

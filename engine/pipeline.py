@@ -291,6 +291,33 @@ def stage_documents(s: dict, ctx: dict) -> list[CheckResult]:
         if d.doc_type == "unknown":
             out.append(CheckResult("DOC_UNKNOWN", "documents", f"Recognise '{d.filename}'", WARN,
                                    f"Couldn't recognise '{d.filename}' as any expected document", "warn"))
+        if d.ai_review and d.ai_review.get("needs_review") and not d.analyst_review:
+            reason = d.ai_review.get("review_reason") or "Document values came from visual-only AI extraction."
+            out.append(CheckResult("DOC_AI_REVIEW", "documents", f"Review AI extraction for '{d.filename}'", FAIL,
+                                   reason, "review", {"filename": d.filename,
+                                   "model": d.ai_review.get("model", "AI")},
+                                   internal_note="Confirm document type and extracted values against the original PDF "
+                                                 "before approving. AI document scoring is advisory."))
+        if d.analyst_review:
+            audit = d.analyst_review
+            out.append(CheckResult("DOC_ANALYST_REVIEW", "documents", f"Analyst confirmed '{d.filename}'", INFO,
+                                   f"{audit.get('action', 'reviewed').capitalize()} by {audit.get('reviewer', 'analyst')}: "
+                                   f"{audit.get('reason', '')}", "info",
+                                   {"filename": d.filename, "reviewed_at": audit.get("created_at"),
+                                    "document_type": d.doc_type},
+                                   internal_note="Accepted fields were checked against the original uploaded PDF."))
+
+    hashes: dict[str, list[str]] = {}
+    for d in docs:
+        if d.sha256:
+            hashes.setdefault(d.sha256, []).append(d.filename)
+    repeated = [names for names in hashes.values() if len(names) > 1]
+    if repeated:
+        labels = [", ".join(names) for names in repeated]
+        out.append(CheckResult("DOC_DUPLICATE_FILE", "documents", "No duplicate document contents", WARN,
+                               "Identical PDF content was uploaded more than once: " + "; ".join(labels), "warn",
+                               {"duplicate_filenames": [name for names in repeated for name in names]},
+                               internal_note="SHA-256 content match; filenames may differ. Review whether each upload is needed."))
     dup_types = [t for t in REQUIRED_DOCS if sum(1 for d in docs if d.doc_type == t) > 1]
 
     for t in REQUIRED_DOCS:
@@ -394,6 +421,32 @@ def stage_fraud(s: dict, ctx: dict) -> list[CheckResult]:
         else:
             out.append(CheckResult("DUP_BANK", "fraud", "Bank account not used by another vendor", PASS,
                                    "Account number is unique in vendor master"))
+
+        # Similar legal names are only a triage signal. Exact PAN matching above
+        # remains its own rule, and fuzzy matches never reject by themselves.
+        submitted_name = V.normalize_name(s.get("legal_name", ""))
+        if len(submitted_name) >= 12 and len(submitted_name.split()) >= 2:
+            candidates = master[master["pan"] != s.get("pan", "")]
+            matches = []
+            for _, row in candidates.iterrows():
+                existing_name = str(row.get("legal_name", ""))
+                existing_norm = V.normalize_name(existing_name)
+                if len(existing_norm) < 12 or len(existing_norm.split()) < 2:
+                    continue
+                similarity = V.name_similarity(s.get("legal_name", ""), existing_name)
+                if similarity >= 90:
+                    matches.append((similarity, str(row.get("vendor_id", "")), existing_name))
+            if matches:
+                matches.sort(reverse=True)
+                best = matches[0]
+                out.append(CheckResult("DUP_NAME_REVIEW", "fraud", "Review similar vendor legal names", FAIL,
+                                       f"Legal name is {best[0]}% similar to existing vendor {best[1]} ({best[2]}).",
+                                       "review", {"similarity": best[0], "vendor_id": best[1]}, vendor_ask="",
+                                       internal_note="Possible related or duplicate entity; compare registration identifiers. "
+                                                     "Name similarity is not proof of identity and must not cause rejection."))
+            else:
+                out.append(CheckResult("DUP_NAME_REVIEW", "fraud", "No near-duplicate legal name found", PASS,
+                                       "No sufficiently similar legal name found in the vendor master."))
 
     prev = ctx.get("previous")
     if prev:

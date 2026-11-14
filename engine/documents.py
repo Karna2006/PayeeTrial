@@ -1,12 +1,8 @@
-"""Document intake: read uploaded PDFs, figure out what each one actually is,
-and pull out the fields we need to cross-check against the form.
-
-Digital PDFs are read with pypdf. Scanned images would go through an OCR
-step (Tesseract / PaddleOCR) before this same parser - out of scope for v1.
-"""
+"""Document intake: bound PDF processing and extract only reviewable evidence."""
 from __future__ import annotations
 
 import io
+import hashlib
 import re
 from dataclasses import dataclass, field
 
@@ -18,6 +14,13 @@ DOC_TYPES = {
     "cancelled_cheque": "Cancelled Cheque",
     "unknown": "Unrecognised document",
 }
+
+# Limits keep the synchronous demo responsive. A production service should also
+# isolate PDF parsing in a resource-limited worker and scan uploads for malware.
+MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+MAX_PDF_PAGES = 40
+MAX_EXTRACTED_CHARS = 300_000
+MAX_DOCUMENTS_PER_SUBMISSION = 6
 
 # Keyword fingerprints, ordered by specificity
 _FINGERPRINTS = [
@@ -33,6 +36,13 @@ class ParsedDoc:
     doc_type: str
     text: str
     fields: dict = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    page_count: int | None = None
+    ai_review: dict | None = None
+    page_texts: list[str] = field(default_factory=list)
+    sha256: str = ""
+    file_size: int = 0
+    analyst_review: dict | None = None
 
     @property
     def label(self) -> str:
@@ -40,11 +50,53 @@ class ParsedDoc:
 
 
 def extract_text(data: bytes) -> str:
+    text, _, _, _ = _extract_text(data)
+    return text
+
+
+def _extract_text(data: bytes) -> tuple[str, list[str], int | None, list[str]]:
+    """Return explicit intake warnings instead of silently treating failures as empty PDFs."""
+    if len(data) > MAX_DOCUMENT_BYTES:
+        return "", [f"File exceeds the {MAX_DOCUMENT_BYTES // (1024 * 1024)} MB limit."], None, []
+    if b"%PDF-" not in data[:1024]:
+        return "", ["File does not have a valid PDF header."], None, []
     try:
         reader = PdfReader(io.BytesIO(data))
-        return "\n".join((p.extract_text() or "") for p in reader.pages)
+        if reader.is_encrypted:
+            return "", ["PDF is encrypted and cannot be read without a password."], None, []
+        page_count = len(reader.pages)
+        if page_count > MAX_PDF_PAGES:
+            return "", [f"PDF has {page_count} pages; the limit is {MAX_PDF_PAGES}."], page_count, []
+        chunks: list[str] = []
+        page_texts: list[str] = []
+        warnings: list[str] = []
+        total = 0
+        for page_number, page in enumerate(reader.pages, start=1):
+            try:
+                chunk = page.extract_text() or ""
+            except Exception:
+                warnings.append(f"Text extraction failed on page {page_number}.")
+                chunks.append("")
+                page_texts.append("")
+                continue
+            remaining = MAX_EXTRACTED_CHARS - total
+            if len(chunk) > remaining:
+                bounded_chunk = chunk[:remaining]
+                chunks.append(bounded_chunk)
+                page_texts.append(bounded_chunk)
+                warnings.append(f"Extracted text was capped at {MAX_EXTRACTED_CHARS:,} characters.")
+                chunks.extend([""] * (page_count - page_number))
+                page_texts.extend([""] * (page_count - page_number))
+                break
+            chunks.append(chunk)
+            page_texts.append(chunk)
+            total += len(chunk)
+        text = "\n".join(chunks)
+        if not text.strip() and not warnings:
+            warnings.append("No selectable text found; this may be a scanned PDF and needs OCR.")
+        return text, warnings, page_count, page_texts
     except Exception:
-        return ""
+        return "", ["PDF could not be read; it may be corrupt or unsupported."], None, []
 
 
 def classify(text: str) -> str:
@@ -82,6 +134,8 @@ def parse_fields(doc_type: str, text: str) -> dict:
 
 
 def parse(filename: str, data: bytes) -> ParsedDoc:
-    text = extract_text(data)
+    text, warnings, page_count, page_texts = _extract_text(data)
     doc_type = classify(text)
-    return ParsedDoc(filename=filename, doc_type=doc_type, text=text, fields=parse_fields(doc_type, text))
+    return ParsedDoc(filename=filename, doc_type=doc_type, text=text,
+                     fields=parse_fields(doc_type, text), warnings=warnings, page_count=page_count,
+                     page_texts=page_texts, sha256=hashlib.sha256(data).hexdigest(), file_size=len(data))

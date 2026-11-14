@@ -19,9 +19,29 @@ FILENAME_HINTS = [("cheque", "cancelled_cheque", "a cheque"), ("pan", "pan_card"
 
 CSS = """
 <style>
-.block-container {padding-top: 2.4rem; max-width: 1280px;}
-h1 {font-size: 28px !important; font-weight: 600 !important; padding-bottom: 0 !important;}
-h3 {font-size: 18px !important; font-weight: 600 !important;}
+.stApp {background: #F4F6F3; color: #182421;}
+[data-testid="stHeader"] {background: rgba(244, 246, 243, 0.92);}
+[data-testid="stAppViewContainer"] > .main .block-container {padding: 2rem 3rem 3rem; max-width: 1380px;}
+[data-testid="stSidebar"] {background: #172B29; border-right: 1px solid #29413E;}
+[data-testid="stSidebar"] * {color: #EAF1EE;}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {color: #A9BCB6;}
+[data-testid="stSidebar"] [data-testid="stRadio"] label {border-radius: 8px; padding: 5px 8px;}
+h1 {font-size: 30px !important; font-weight: 650 !important; letter-spacing: -0.035em; padding-bottom: 0 !important;}
+h2, h3 {font-weight: 620 !important; letter-spacing: -0.02em;}
+p, label, [data-testid="stMarkdownContainer"] {line-height: 1.55;}
+.vg-eyebrow {color: #50716A; font-size: 11px; font-weight: 750; letter-spacing: .13em;
+             text-transform: uppercase; margin: 0 0 6px;}
+.vg-section {font-size: 12px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase;
+             color: #42645C; border-bottom: 1px solid #E5EAE6; padding: 0 0 9px; margin: 4px 0 9px;}
+[data-testid="stVerticalBlockBorderWrapper"] {background: #FFFFFF; border-color: #E1E7E2; border-radius: 13px;}
+[data-testid="stTextInputRootElement"], [data-testid="stTextArea"] {border-radius: 8px;}
+[data-testid="stSelectbox"] [data-baseweb="select"] > div {border-radius: 8px;}
+[data-testid="stFileUploader"] section {background: #FAFBF9; border: 1px dashed #B8C8C1; border-radius: 10px;}
+[data-testid="stButton"] button {border-radius: 8px; font-weight: 600; transition: filter .15s ease, transform .15s ease;}
+[data-testid="stButton"] button:hover {filter: brightness(.96); transform: translateY(-1px); border-color: #78958B;}
+[data-testid="stButton"] button[kind="primary"] {background: #176B5B; border-color: #176B5B; color: #FFFFFF;}
+[data-testid="stProgress"] > div > div {background: #176B5B;}
+[data-testid="stDataFrame"] {border: 1px solid #E1E7E2; border-radius: 10px; overflow: hidden;}
 .vg-pill {display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.04em;}
 .vg-approved {color: #059669; background: #ECFDF5;}
@@ -31,14 +51,13 @@ h3 {font-size: 18px !important; font-weight: 600 !important;}
 .vg-headline {font-size: 18px; font-weight: 600; color: #111827; margin: 4px 0 6px;}
 .vg-tag {display: inline-block; font-family: monospace; font-size: 12px; color: #B91C1C; background: #FEF2F2;
          border: 1px solid #FECACA; border-radius: 6px; padding: 1px 8px; margin-left: 6px;}
-.vg-chip {display: inline-block; font-size: 13px; color: #111827; background: #F6F7F9; border: 1px solid #E5E7EB;
+.vg-chip {display: inline-block; font-size: 13px; color: #182421; background: #F6F8F5; border: 1px solid #DCE5DF;
           border-radius: 8px; padding: 4px 10px; margin: 0 6px 6px 0;}
 .vg-chip.bad {color: #B91C1C; background: #FEF2F2; border-color: #FECACA;}
+.vg-chip.warn {color: #8A5A12; background: #FFF8E8; border-color: #EED9A8;}
 .vg-banner {color: #1D4ED8; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 12px;
             padding: 10px 16px; margin: 4px 0 12px; font-size: 15px;}
 .vg-muted {color: #6B7280; font-size: 13px;}
-.vg-section {font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-             color: #6B7280; margin: 10px 0 2px;}
 </style>
 """
 
@@ -53,7 +72,7 @@ def section(label: str) -> None:
 
 def md_safe(text: str) -> str:
     """Vendor-typed text goes into markdown; stop '$' and '*' from being read as formatting."""
-    return str(text).replace("$", "\\$").replace("*", "\\*").replace("_", "\\_")
+    return escape(str(text), quote=False).replace("$", "\\$").replace("*", "\\*").replace("_", "\\_")
 
 
 def status_pill(status: str) -> str:
@@ -65,7 +84,8 @@ def banner(text: str) -> None:
 
 
 def risk_bar(score: int, level: str) -> None:
-    st.progress(min(max(score, 0), 100) / 100, text=f"Risk **{score}** / 100 · {level}")
+    st.progress(min(max(score, 0), 100) / 100, text=f"Rule signal score **{score}** / 100 · {level}")
+    st.caption("Weighted rule findings; not a fraud probability or external verification.")
 
 
 def check_row(result: dict) -> None:
@@ -125,9 +145,17 @@ def doc_chips(docs: list[dict]) -> None:
     chips = []
     for d in docs:
         label = DOC_TYPES.get(d["doc_type"], d["doc_type"])
+        ai = d.get("ai_review") or {}
         name = d["filename"].lower()
         hint = next((h for h in FILENAME_HINTS if h[0] in name), None)
-        if d["doc_type"] == "unknown":
+        if d.get("warnings"):
+            warning = escape("; ".join(d["warnings"]))
+            chips.append(f"<span class='vg-chip warn'>Review {escape(d['filename'])}: {warning}</span>")
+        if d["doc_type"] == "unknown" and ai.get("status") == "complete" and ai.get("document_type") != "unknown":
+            ai_label = DOC_TYPES.get(ai["document_type"], ai["document_type"])
+            chips.append(f"<span class='vg-chip warn'>AI identifies {escape(d['filename'])} as "
+                         f"{escape(ai_label)} · analyst confirmation required</span>")
+        elif d["doc_type"] == "unknown":
             chips.append(f"<span class='vg-chip bad'>❌ {escape(d['filename'])} → {escape(label)}</span>")
         elif hint and hint[1] != d["doc_type"]:
             chips.append(f"<span class='vg-chip bad'>⚠️ {escape(d['filename'])} → named like {hint[2]}, "
@@ -135,6 +163,50 @@ def doc_chips(docs: list[dict]) -> None:
         else:
             chips.append(f"<span class='vg-chip'>{escape(d['filename'])} → {escape(label)} ✓</span>")
     st.markdown("<b>Documents read:</b> " + "".join(chips), unsafe_allow_html=True)
+
+
+def ai_document_reviews(docs: list[dict]) -> None:
+    """Show extracted evidence and advisory scores without mixing them into vendor risk."""
+    reviews = [(doc, doc.get("ai_review")) for doc in docs if doc.get("ai_review")]
+    if not reviews:
+        return
+    section("AI document review · advisory")
+    st.caption("Document score measures classification, completeness, and readability. It is not a fraud score "
+               "and never decides approval. Selectable-text quotes are checked against the cited page; visual-only "
+               "scan values and their scores are estimates that cannot be independently grounded and require analyst confirmation.")
+    for doc, review in reviews:
+        with st.expander(f"{doc['filename']} · {review.get('status', 'unknown')}",
+                         expanded=review.get("needs_review", False)):
+            if review.get("status") != "complete":
+                st.warning(review.get("message", "AI document review is unavailable."))
+                continue
+            st.metric("AI evidence quality", f"{review['score']}/100")
+            st.progress(review["score"] / 100)
+            model_version = review.get("actual_model_version") or review["model"]
+            st.caption(f"AI classification: {DOC_TYPES.get(review['document_type'], review['document_type'])} · "
+                       f"{model_version} · {review['source']}")
+            if review.get("needs_review"):
+                st.warning(review.get("review_reason") or
+                           "Visual-only extraction requires confirmation against the original PDF.")
+            st.text(review.get("score_rationale", ""))
+            if review.get("score_breakdown"):
+                breakdown = review["score_breakdown"]
+                st.caption("Score components — classification / completeness / readability: " +
+                           f"{breakdown.get('classification', 0)} / "
+                           f"{breakdown.get('field_completeness', 0)} / "
+                           f"{breakdown.get('readability', 0)}")
+            if review.get("fields"):
+                st.dataframe(pd.DataFrame([{"Extracted field": k, "Value": v}
+                                           for k, v in review["fields"].items()]),
+                             hide_index=True, width="stretch")
+            if review.get("evidence"):
+                st.dataframe(pd.DataFrame([{"Field": e["field"], "Page": e["page_number"],
+                                            "Supporting text": e["quote"],
+                                            "Text layer verified": "Yes" if e["text_verified"] else "Visual only"}
+                                           for e in review["evidence"]]),
+                             hide_index=True, width="stretch")
+            for note in review.get("notes", []):
+                st.text(note)
 
 
 def decision_card(decision: dict, meta: dict) -> None:
@@ -147,7 +219,7 @@ def decision_card(decision: dict, meta: dict) -> None:
         st.markdown(f"<div class='vg-headline'>{escape(decision['headline'])}</div>", unsafe_allow_html=True)
         if decision.get("fraud_signals"):
             tags = "".join(f"<span class='vg-tag'>{escape(s)}</span>" for s in decision["fraud_signals"])
-            st.markdown(f"🚩 <b>Fraud signals:</b>{tags}", unsafe_allow_html=True)
+            st.markdown(f"<b>Fraud signals:</b>{tags}", unsafe_allow_html=True)
         foot = [f"{decision['n_pass']} passed", f"{decision['n_fail']} failed", f"{decision['n_warn']} warnings"]
         if meta.get("duration_ms") is not None:
             foot.append(f"{meta['duration_ms']:.0f} ms")
@@ -162,6 +234,12 @@ def email_view(email: dict) -> None:
     st.markdown(f"**Subject:** {md_safe(email['subject'])}")
     st.code(email["body"], language=None, wrap_lines=True)
     st.caption(f"Generated by: {email.get('polished_by', 'template')}")
+    if email.get("polish_error"):
+        st.warning(email["polish_error"] + " The deterministic template remains unchanged.")
+    if email.get("polish_suggestion"):
+        st.warning("LLM wording is an unapproved draft. The deterministic template above remains the message of record.")
+        with st.expander(f"Review draft suggestion ({email.get('polish_model', 'local model')})"):
+            st.text(email["polish_suggestion"])
 
 
 def diff_table(prev_sub: dict, sub: dict, prev_results: list[dict]) -> None:
@@ -187,24 +265,25 @@ def kv_table(pairs: dict) -> None:
 def run_view(record: dict, title: str = "Live run") -> None:
     section(title)
     doc_chips(record["docs"])
+    ai_document_reviews(record["docs"])
     render_stages(iter(record["stages"]))
 
 
 def result_tabs(record: dict) -> None:
     """Vendor email · Internal note · (Changes vs previous) · Raw record."""
     prev = record.get("previous")
-    names = ["📧 Vendor email", "📝 Internal note"] + (["🔀 Changes vs previous"] if prev else []) + ["🧾 Raw record"]
+    names = ["Vendor email", "Internal note"] + (["Changes vs previous"] if prev else []) + ["Raw record"]
     tabs = dict(zip(names, st.tabs(names)))
-    with tabs["📧 Vendor email"]:
+    with tabs["Vendor email"]:
         email_view(record["email"])
-    with tabs["📝 Internal note"]:
+    with tabs["Internal note"]:
         st.code(record["note"], language=None, wrap_lines=True)
         st.caption("Visible to procurement/compliance only. Never sent to the vendor.")
     if prev:
-        with tabs["🔀 Changes vs previous"]:
+        with tabs["Changes vs previous"]:
             st.caption(f"v{record['version']} compared with v{prev['version']} of {record['ref']}")
             diff_table(prev["submission"], record["submission"], prev["results"])
-    with tabs["🧾 Raw record"]:
+    with tabs["Raw record"]:
         st.json({"submission": record["submission"], "documents": record["docs"],
                  "results": record["results"], "decision": record["decision"]}, expanded=1)
 

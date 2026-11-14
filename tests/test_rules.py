@@ -1,7 +1,10 @@
 """B · Rule-level tests: scenario 1 (clean) mutated one field at a time."""
 from __future__ import annotations
 
+import io
+
 import pytest
+from pypdf import PdfWriter
 
 from conftest import by_id, failed_ids, parse_docs, load_submission, warned_ids
 from engine import documents, pipeline, validators as V
@@ -146,10 +149,47 @@ def test_b12_no_documents(run_sample):
 def test_b13_unreadable_file_is_unknown(run_sample):
     junk = documents.parse("notes.pdf", b"this is not a pdf")
     assert junk.doc_type == "unknown" and junk.text == ""
+    assert junk.warnings == ["File does not have a valid PDF header."]
     docs = parse_docs(load_submission(1)) + [junk]
     out = run_sample(1, docs=docs)
     assert warned_ids(out) == ["DOC_UNKNOWN"] and "notes.pdf" in by_id(out, "DOC_UNKNOWN")["detail"]
     assert out["decision"]["status"] == "APPROVED"
+
+
+def test_b13a_document_intake_limits_and_encryption():
+    large = documents.parse("large.pdf", b"%PDF-1.7\n" + b"0" * documents.MAX_DOCUMENT_BYTES)
+    assert "exceeds" in large.warnings[0]
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.encrypt("secret")
+    encrypted_pdf = io.BytesIO()
+    writer.write(encrypted_pdf)
+    encrypted = documents.parse("locked.pdf", encrypted_pdf.getvalue())
+    assert encrypted.doc_type == "unknown"
+    assert "encrypted" in encrypted.warnings[0]
+
+
+def test_b13b_pdf_page_limit_is_reported():
+    writer = PdfWriter()
+    for _ in range(documents.MAX_PDF_PAGES + 1):
+        writer.add_blank_page(width=100, height=100)
+    pages_pdf = io.BytesIO()
+    writer.write(pages_pdf)
+    parsed = documents.parse("many-pages.pdf", pages_pdf.getvalue())
+    assert parsed.page_count == documents.MAX_PDF_PAGES + 1
+    assert "limit is" in parsed.warnings[0]
+
+
+def test_b13c_pdf_without_selectable_text_is_flagged_for_ocr():
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    blank_pdf = io.BytesIO()
+    writer.write(blank_pdf)
+    parsed = documents.parse("scan.pdf", blank_pdf.getvalue())
+    assert parsed.doc_type == "unknown"
+    assert parsed.page_count == 1
+    assert "needs OCR" in parsed.warnings[0]
 
 
 def test_b14_cancelled_gst_registration(run_sample):

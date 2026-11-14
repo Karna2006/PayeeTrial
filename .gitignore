@@ -1,6 +1,9 @@
 .venv/
+.streamlit/secrets.toml
 __pycache__/
 *.pyc
 data/runs.db
 .DS_Store
 .pytest_cache/
+.pytest-tmp/
+.pytest-gemini-polish/
