@@ -1,39 +1,130 @@
-# 🛡️ PayeeTrail: Trust the payee. Trace every change.
+# PayeeTrail
 
-> Zamp · AI Solutions Analyst case study · **PS-2: Vendor onboarding, from submission to approval**
+**Vendor onboarding review with explainable, rules-based checks.**
 
-PayeeTrail takes a vendor's onboarding submission (form + PDFs), cross-checks every field and document against each other and against the existing vendor master, and returns **Approved / Pending / Rejected**, with the reasoning visible stage by stage and a ready-to-send message telling the vendor exactly what to fix.
+[![Test workflow](https://github.com/Karna2006/PayeeTrial/actions/workflows/tests.yml/badge.svg)](https://github.com/Karna2006/PayeeTrial/actions/workflows/tests.yml)
 
-- **27 core checks across 5 stages** plus conditional document classification, conflict, AI review, duplicate-file, and analyst-review findings: intake -> identity (PAN + GSTIN) -> bank -> document cross-check -> duplicate & fraud screening
-- **Catches what field validators miss:** the PAN inside the GSTIN, GSTIN state vs address, documents classified by content, third-party bank accounts, bank accounts shared with existing vendors, unrequested bank changes on resubmission
-- **Rules decide, AI assists:** one OpenRouter model can classify PDFs, extract page evidence, score document quality, and suggest email wording; deterministic checks still own the final outcome
-- **Offline by default:** AI is opt-in. The same model handles document review and optional email polishing
-- **Bounded PDF intake:** size, page-count, and extracted-text limits; scanned or conflicting AI extractions go to human review
-- **Audited document review:** reviewers can confirm or correct uncertain OCR candidates against the original PDF; original AI values and each review event remain in the audit trail without creating a new vendor submission version
-- **One-click document autofill:** selectable PDF text fills blank matching form fields locally; optional AI OCR suggests evidence-cited values for scans, while existing form values are never overwritten
-- **Duplicate and near-duplicate screening:** exact PDF SHA-256 matches are flagged even after renaming; similar legal names in the vendor master route to human review only
+PayeeTrail is a Streamlit prototype that helps a procurement team review vendor submissions. It compares form entries with uploaded GST, PAN, and bank documents, highlights inconsistencies, and produces a review outcome with supporting findings and a vendor email draft.
 
-The current build remains an assignment prototype, not a production vendor portal. OpenRouter's free NVIDIA Nemotron 3.5 Super VL endpoint provides optional OCR-like extraction for scanned pages; extracted values remain unconfirmed until a reviewer checks the original. The free endpoint may log prompts and use them to improve the provider's products: use only synthetic demo data for any AI feature; never send real vendor documents or contact or financial identifiers. Its scale path—including privacy-approved model hosting, persistent storage, access control, and async processing—is documented in [`docs/11_PRODUCTION_READINESS.md`](docs/11_PRODUCTION_READINESS.md).
+**Live app:** [Open PayeeTrail](https://payeetrial-zamp-ai.streamlit.app/) | **Demo video:** [Watch the PayeeTrail walkthrough on Loom](https://www.loom.com/share/03371742510842048ef6eadd6adda456)
 
-## Quick start
+> This is an assignment prototype that uses synthetic data. It is not a production vendor portal or an external verification service.
 
-```bash
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python scripts/make_samples.py
-streamlit run app.py
+## Product highlights
+
+- **Required submission gate:** verification stays disabled until all required form fields and document slots are complete. Optional fields can be left blank.
+- **27 core checks across five stages:** intake and completeness; identity; bank details; document cross-check; duplicate and fraud screening.
+- **Cross-field checks:** validates PAN and GSTIN formats and relationships, GST state against the registered address, and submitted bank details against the uploaded cheque.
+- **Content-based document handling:** classifies PDFs by their contents, checks required evidence, flags duplicate files by SHA-256, and blocks conflicting different-content files of the same required type.
+- **Bounded PDF intake:** limits file size, page count, extracted text, and the number of documents per submission.
+- **Vendor duplicate screening:** checks exact PDF content hashes and sends sufficiently similar vendor names to human review instead of automatically rejecting them.
+- **Resubmission monitoring:** compares versions and flags unrequested changes to sensitive bank details for compliance review.
+- **Decision traceability:** displays check results by stage, supporting evidence, the decision queue, and the rule signal score. The score is a weighted rule summary, not a fraud probability.
+- **Reviewer workflow:** analysts can confirm or correct uncertain document values against the original PDF. Accepted values are checked again, with the review recorded in the audit history.
+- **Dashboard and run history:** summarizes outcomes and pending work; run details show documents, checks, submissions, and version history.
+- **Vendor email outbox:** creates deterministic email drafts for review. Messages are not sent automatically.
+- **Optional AI assistance:** OpenRouter can suggest document classifications, extracted values, cited page evidence, a document evidence-quality score, and optional email wording. AI is advisory and never decides approval.
+
+## How it works
+
+```mermaid
+flowchart LR
+    V[Vendor or analyst] --> UI[Streamlit app]
+    UI --> G[Required-field and document gate]
+    G --> P[Local PDF parsing and SHA-256 duplicate detection]
+    P --> R[Deterministic rules engine]
+    R <--> M[Synthetic vendor master CSV]
+    P -. Optional AI review .-> A[OpenRouter evidence candidates]
+    A --> E[Quote and page evidence checks]
+    E -. Uncertain evidence .-> H[Analyst review]
+    P -. Missing local evidence .-> H
+    H -->|Confirmed values| R
+    R --> D[Approved, pending, or rejected]
+    D --> S[(SQLite run and review history)]
+    D --> O[Vendor email outbox]
 ```
 
-Then on **Submit & Verify**, load a demo scenario and click **▶ Run verification**.
+Selectable-text citations are checked against the cited PDF page and candidate values. Visual-only scan values cannot be independently grounded, so they require analyst confirmation. Deterministic rules remain the source of the final outcome.
 
-### Optional AI document review and email polishing
+## Demo scenarios
 
-Both features use the same OpenRouter model, `nvidia/nemotron-3.5-super-vl:free`. Create a free OpenRouter API key and add `OPENROUTER_API_KEY = "..."` to `.streamlit/secrets.toml` (or set the environment variable), then enable either option in Settings. Document review sends selected PDFs to OpenRouter. Email polishing sends the generated email body, which can contain vendor or contact names, references, and correction requests. The free endpoint is rate-limited and may log prompts or use them to improve provider products. Use synthetic demo data only; never put a key in a commit or chat.
+The repository includes six synthetic cases. Run case 02 before case 05; case 05 is its resubmission.
 
+| Case | Scenario | Expected outcome |
+|---|---|---|
+| 01 | Consistent form, documents, and bank details | Approved |
+| 02 | PAN typo and GSTIN registered in a different state | Pending - awaiting vendor |
+| 03 | Third-party bank account also present in the vendor master | Rejected |
+| 04 | Sister-company GST certificate and conflicting PAN documents | Pending - awaiting vendor |
+| 05 | Resubmission fixes prior issues but changes bank details without being asked | Pending - compliance review |
+| 06 | Proprietorship with the owner's personal bank account | Approved |
 
-## Test the project
+## Technology
 
-The test suite uses synthetic data and mocked provider responses, so it needs no API keys or real vendor documents:
+| Area | Implementation |
+|---|---|
+| Application and UI | Python, Streamlit |
+| Local document extraction | pypdf and deterministic text rules |
+| Rules and data processing | Python, pandas, rapidfuzz |
+| Audit store | SQLite |
+| Optional AI provider | NVIDIA Nemotron 3.5 Super VL through OpenRouter |
+| Test suite | pytest; synthetic documents and mocked AI responses |
+| Hosting | Streamlit Community Cloud |
+
+The core workflow runs without an API key. AI review and email polishing are opt-in.
+
+## Run locally
+
+### Requirements
+
+- Python 3.11 or 3.12
+- Git
+
+### Setup
+
+From the repository root:
+
+**Windows PowerShell**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python scripts/make_samples.py
+python -m streamlit run app.py
+```
+
+**macOS / Linux**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python scripts/make_samples.py
+python -m streamlit run app.py
+```
+
+Open the local URL printed by Streamlit (normally http://localhost:8501). On **Submit & Verify**, load a demo case or enter a submission, attach the required PDFs, and run verification. The generator creates the synthetic scenario documents and vendor master used by the app.
+
+## Optional OpenRouter features
+
+Both AI options are disabled unless an OpenRouter key is configured. Add the key to Streamlit secrets or an environment variable; do not commit secrets.
+
+For local use, create `.streamlit/secrets.toml`:
+
+```toml
+OPENROUTER_API_KEY = "your-key"
+# Optional; defaults to nvidia/nemotron-3.5-super-vl:free
+OPENROUTER_MODEL = "nvidia/nemotron-3.5-super-vl:free"
+```
+
+Then enable **Review documents with free AI** or **Polish email with the same model** in the app's Settings. Document review sends selected PDFs to OpenRouter. Email polishing sends the generated email body, which can include names, references, and correction requests. The free endpoint may be rate-limited and may log prompts or use them to improve provider products. Use synthetic demo data only; never send real vendor documents or personal or financial identifiers.
+
+## Run tests
+
+The suite uses synthetic fixtures and mocked provider responses; tests do not require an OpenRouter key or real vendor documents.
 
 ```bash
 python scripts/make_samples.py
@@ -41,37 +132,47 @@ python scripts/make_scan_sample.py
 python -m pytest -q
 ```
 
-GitHub Actions runs the same suite on pushes and pull requests. See [`docs/13_TESTING_PIPELINE.md`](docs/13_TESTING_PIPELINE.md) for the test layers, edge-case coverage, local temp-directory workaround, and manual demo checks.
+GitHub Actions runs the suite on pushes, pull requests, and manual dispatch with Python 3.11 and 3.12.
+If pytest cannot create its temporary directory in your Windows environment, run:
 
-## Demo scenarios
+```powershell
+python -m pytest -q -p no:cacheprovider --basetemp .pytest-tmp\readme
+```
 
-| # | Scenario | Expected |
-|---|---|---|
-| 1 | Happy path | APPROVED |
-| 2 | Cross-field inconsistencies (PAN typo + GSTIN from the wrong state) | PENDING · Awaiting vendor |
-| 3 | Third-party bank account already used by another vendor | REJECTED |
-| 4 | Wrong documents (sister-company GST cert; two distinct PAN cards, one uploaded as a cheque) | PENDING - Awaiting vendor |
-| 5 | Resubmission of #2 that quietly swaps the bank account (**run after #2**) | PENDING · Compliance review |
-| 6 | Proprietorship paid into the owner's personal account (legitimate) | APPROVED |
+## Deploy to Streamlit Community Cloud
 
-## Planning docs
+1. Push the repository to GitHub.
+2. In Streamlit Community Cloud, create an app from this repository, select the `main` branch, and set `app.py` as the entry point.
+3. Add `OPENROUTER_API_KEY` in the app's Streamlit secrets only if you want to enable the optional AI features.
+4. Deploy. Future commits pushed to the connected branch update the app.
 
-| Doc | What's inside |
-|---|---|
-| [`docs/00_INDEX.md`](docs/00_INDEX.md) | Reading order |
-| [`docs/01_PRD.md`](docs/01_PRD.md) | Problem, users, MVP features, **non-goals**, success criteria, glossary |
-| [`docs/02_TECH_STACK.md`](docs/02_TECH_STACK.md) | Stack, constraints, where the LLM is and isn't used, deployment |
-| [`docs/03_DATA_SCHEMA.md`](docs/03_DATA_SCHEMA.md) | Every data model, DB table, reference data, folder layout |
-| [`docs/04_USER_FLOWS.md`](docs/04_USER_FLOWS.md) | Step-by-step flows incl. resubmission, error states |
-| [`docs/05_RULES_SPEC.md`](docs/05_RULES_SPEC.md) | Core checks and conditional AI review gate: logic, severity, messages and decision rules |
-| [`docs/06_TEST_SCENARIOS.md`](docs/06_TEST_SCENARIOS.md) | 6 scenarios with exact data and expected outcomes; test assertions |
-| [`docs/07_UI_UX_SPEC.md`](docs/07_UI_UX_SPEC.md) | Design vibe, colour tokens, wireframes for every page, components, microcopy |
-| [`docs/08_ASSUMPTIONS_AND_DECISIONS.md`](docs/08_ASSUMPTIONS_AND_DECISIONS.md) | Assumptions, design decisions, known limits, v2 roadmap |
-| [`docs/09_PLAN.md`](docs/09_PLAN.md) | One-day phased build plan with exit checks |
-| [`docs/10_DEMO_SCRIPT.md`](docs/10_DEMO_SCRIPT.md) | 5-min video script, live run order, interview Q&A |
-| [`docs/11_PRODUCTION_READINESS.md`](docs/11_PRODUCTION_READINESS.md) | Security and scaling architecture, API integrations, production gates |
-| [`docs/12_REFERENCE_REPO_REVIEW.md`](docs/12_REFERENCE_REPO_REVIEW.md) | Reference repo data and reuse decisions |
-| [`docs/13_TESTING_PIPELINE.md`](docs/13_TESTING_PIPELINE.md) | Local and CI test commands, safe fixtures, edge-case coverage, manual checks |
-| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Rulebook for Claude Code / Codex |
+The deployed app URL is provided by Streamlit Community Cloud and ends in `.streamlit.app`.
 
-All test data is synthetic.
+## Limitations and safe use
+
+PayeeTrail compares submissions with uploaded documents and a bundled synthetic vendor master. It does **not** query GST, PAN, banking, or other external registries, and it does not verify account ownership through a bank. Its outcomes are configured workflow decisions, not proof of a vendor's identity or legitimacy.
+
+This prototype has no user authentication or role-based access control. Runs are stored in a local SQLite database; storage on Streamlit Community Cloud is not a durable production data store. Email drafts are displayed in the outbox and are not sent. Use synthetic data only.
+
+## Project structure
+
+```text
+app.py                  Streamlit entry point and navigation
+engine/                 Document parsing, validators, rules, decisions, and persistence
+services/                Optional OpenRouter integrations
+ui/                      Streamlit pages and components
+samples/                 Synthetic scenarios and PDFs
+data/vendor_master.csv   Synthetic vendor master used by demo checks
+tests/                   Rules, scenarios, UI, AI-boundary, and audit tests
+docs/                    Product, rules, architecture, demo, and readiness notes
+```
+
+## Further reading
+
+- [Product requirements](docs/01_PRD.md)
+- [Technology stack and deployment](docs/02_TECH_STACK.md)
+- [Rules specification](docs/05_RULES_SPEC.md)
+- [Scenario details](docs/06_TEST_SCENARIOS.md)
+- [Demo script and interview preparation](docs/10_DEMO_SCRIPT.md)
+- [Production readiness and scale plan](docs/11_PRODUCTION_READINESS.md)
+- [Testing pipeline](docs/13_TESTING_PIPELINE.md)
